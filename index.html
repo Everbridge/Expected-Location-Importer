@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Expected Location Importer</title>
+    <link rel="shortcut icon" href="images/favicon.png">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div id="header_wrap" class="outer">
+      <header>
+        <div id="logo">
+          <div class="inner">
+            <div class="site-logo">
+              <a href="https://www.everbridge.com/" title="Everbridge" rel="home">
+                <img src="images/Everbridge-Logo-Color.svg" alt="Everbridge">
+              </a>
+            </div>
+          </div>
+        </div>
+        <div id="header_bg">
+          <div class="inner">
+            <div id="site-title">
+              <h1 id="project_title">Everbridge</h1>
+              <h2 id="project_tagline">Expected Location Importer</h2>
+            </div>
+          </div>
+        </div>
+      </header>
+    </div>
+
+    <div id="main_content_wrap" class="outer">
+      <main id="main_content" class="inner app-shell">
+        <section class="panel connection-panel" aria-labelledby="authenticationTitle">
+          <div class="panel-heading">
+            <h2 id="authenticationTitle">Authentication</h2>
+            <span class="status-dot" id="authStatus" aria-label="Credentials status"></span>
+          </div>
+
+          <div class="connection-grid">
+            <div class="field-block">
+              <label for="apiBaseUrl">API Base URL</label>
+              <div class="editable-combo" id="apiBaseUrlCombo">
+                <input id="apiBaseUrl" name="apiBaseUrl" autocomplete="url" value="https://api.everbridge.net" required>
+                <button class="combo-toggle" id="apiBaseUrlToggle" type="button" aria-label="Show API Base URL Options" aria-expanded="false" aria-controls="apiBaseUrlMenu"></button>
+                <div class="combo-menu" id="apiBaseUrlMenu" role="listbox" hidden>
+                  <button type="button" role="option" data-api-base-url="https://api.everbridge.net">https://api.everbridge.net</button>
+                  <button type="button" role="option" data-api-base-url="https://api.everbridge.eu">https://api.everbridge.eu</button>
+                </div>
+              </div>
+            </div>
+            <label>
+              Organization ID
+              <input id="organizationId" name="organizationId" inputmode="numeric" autocomplete="off" required>
+            </label>
+            <label>
+              Username
+              <input id="username" name="username" autocomplete="username" required>
+            </label>
+            <label>
+              Password
+              <input id="password" name="password" type="password" autocomplete="current-password" required>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel locations-panel" aria-labelledby="locationsTitle">
+          <div class="panel-heading">
+            <div class="queue-title">
+              <h2 id="locationsTitle">Expected Locations</h2>
+              <span class="count-badge" id="queueCount">0 queued</span>
+            </div>
+            <div class="action-row">
+              <a class="button-link secondary" id="downloadTemplate" href="#" download="expected-locations-template.csv">Download CSV Template</a>
+              <button class="secondary" type="button" id="loadCsv">Load CSV</button>
+              <input id="csvFile" type="file" accept=".csv,text/csv" hidden>
+              <button class="secondary" type="button" id="addRow">Add Row</button>
+              <button class="secondary" type="button" id="clearQueue">Clear Rows</button>
+              <button class="primary" type="button" id="sendImport">Send to Everbridge</button>
+            </div>
+          </div>
+
+          <div class="import-status idle" id="importStatus" role="status" aria-live="polite">Add a row or load a CSV, then send reviewed rows to Everbridge.</div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th class="narrow-col"></th>
+                  <th>Contact ID</th>
+                  <th>Timeframe</th>
+                  <th>Location</th>
+                  <th>Address / Lookup</th>
+                  <th>Status</th>
+                  <th class="actions-col"></th>
+                </tr>
+              </thead>
+              <tbody id="queueBody">
+                <tr class="empty-row">
+                  <td colspan="7">No rows loaded</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <div class="site-logo">
+          <a href="https://www.everbridge.com/" title="Everbridge" rel="home">
+            <img src="images/Everbridge-Logo-White.svg" alt="Everbridge">
+          </a>
+        </div>
+        <p class="copyright">©2026 Everbridge. All&nbsp;rights&nbsp;reserved.&nbsp;<a href="https://www.everbridge.com/about/legal/"><strong>Legal,&nbsp;security,&nbsp;privacy</strong></a>,&nbsp;<a href="https://www.everbridge.com/about/legal/cookie-policy/" target="_self"><strong>cookie policy</strong></a><strong>&nbsp;&amp;&nbsp;</strong><a href="https://www.everbridge.com/about/legal/acceptable-use-policy/"><strong>acceptable&nbsp;use&nbsp;policy</strong></a></p>
+      </footer>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
