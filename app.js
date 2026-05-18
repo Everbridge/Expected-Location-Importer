@@ -16,6 +16,13 @@ const CSV_COLUMNS = [
   "lon",
 ];
 
+const LOCATION_ENTRY_MODES = new Set(["assetExternalId", "iata", "address"]);
+const LOCATION_ENTRY_MODE_OPTIONS = [
+  ["address", "Address"],
+  ["assetExternalId", "Asset External ID"],
+  ["iata", "IATA"],
+];
+
 const FIELD_DEFS = [
   {
     key: "contactIdType",
@@ -29,17 +36,18 @@ const FIELD_DEFS = [
   { key: "contactIdentifier", label: "Contact Identifier", required: true },
   { key: "arriveDate", label: "Arrival", type: "datetime-local", required: true },
   { key: "expireDate", label: "Expiration", type: "datetime-local", required: true },
-  { key: "assetExternalId", label: "Asset External ID" },
-  { key: "iata", label: "IATA", maxLength: 8 },
-  { key: "locationName", label: "Location Name" },
-  { key: "country", label: "Country", type: "select", options: "countries" },
-  { key: "streetAddress", label: "Street Address", wide: true },
-  { key: "city", label: "City" },
-  { key: "region", label: "State/Province", options: "usStates" },
-  { key: "suite", label: "Suite" },
-  { key: "postalCode", label: "Postal Code" },
-  { key: "lat", label: "Latitude", inputmode: "decimal" },
-  { key: "lon", label: "Longitude", inputmode: "decimal" },
+  { key: "locationEntryMode", label: "Location Type", type: "select", options: LOCATION_ENTRY_MODE_OPTIONS, wide: true },
+  { key: "assetExternalId", label: "Asset External ID", locationModes: ["assetExternalId"], wide: true },
+  { key: "iata", label: "IATA", maxLength: 8, locationModes: ["iata"], wide: true },
+  { key: "locationName", label: "Location Name", locationModes: ["address"] },
+  { key: "country", label: "Country", type: "select", options: "countries", locationModes: ["address"] },
+  { key: "streetAddress", label: "Street Address", wide: true, locationModes: ["address"] },
+  { key: "city", label: "City", locationModes: ["address"] },
+  { key: "region", label: "State/Province", options: "usStates", locationModes: ["address"] },
+  { key: "suite", label: "Suite", locationModes: ["address"] },
+  { key: "postalCode", label: "Postal Code", locationModes: ["address"] },
+  { key: "lat", label: "Latitude", inputmode: "decimal", locationModes: ["address"] },
+  { key: "lon", label: "Longitude", inputmode: "decimal", locationModes: ["address"] },
 ];
 
 const HEADER_ALIASES = {
@@ -62,6 +70,10 @@ const HEADER_ALIASES = {
   lat: "lat",
   latitude: "lat",
   locationname: "locationName",
+  locationentrymode: "locationEntryMode",
+  locationmethod: "locationEntryMode",
+  locationmode: "locationEntryMode",
+  locationtype: "locationEntryMode",
   lon: "lon",
   longitude: "lon",
   postalcode: "postalCode",
@@ -78,6 +90,9 @@ const HEADER_ALIASES = {
 };
 
 const CONNECTION_STORAGE_KEY = "expected-location-importer.connection";
+const SESSION_STORAGE_KEY = "expected-location-importer.sessions";
+const CONTACT_FIELD_KEYS = new Set(["contactIdType", "contactIdentifier"]);
+const LOCKED_CONTACT_MESSAGE = "This saved location is already assigned to its original contact. To assign it to another contact, remove this location and create a new one for the correct contact.";
 
 const ICONS = {
   check: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>',
@@ -396,8 +411,14 @@ const US_STATE_OPTIONS = [
 
 const state = {
   queue: [],
+  sessions: [],
+  activeSessionId: "",
+  pendingDeletes: [],
   expandedId: null,
+  lockedContactNoticeId: null,
   isSending: false,
+  isLoadingSession: false,
+  pendingAuthRefreshSessionId: "",
   toastTimer: null,
 };
 
@@ -411,6 +432,13 @@ const els = {
   password: document.querySelector("#password"),
   authStatus: document.querySelector("#authStatus"),
   endpointPreview: document.querySelector("#endpointPreview"),
+  sessionSelect: document.querySelector("#sessionSelect"),
+  sessionName: document.querySelector("#sessionName"),
+  sessionDescription: document.querySelector("#sessionDescription"),
+  sessionMeta: document.querySelector("#sessionMeta"),
+  refreshSession: document.querySelector("#refreshSession"),
+  newSession: document.querySelector("#newSession"),
+  deleteSession: document.querySelector("#deleteSession"),
   downloadTemplate: document.querySelector("#downloadTemplate"),
   loadCsv: document.querySelector("#loadCsv"),
   csvFile: document.querySelector("#csvFile"),
@@ -454,12 +482,32 @@ function defaultWindow() {
   };
 }
 
+function normalizeLocationEntryMode(value) {
+  const normalized = clean(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (["asset", "assetid", "assetexternalid", "assetlookup"].includes(normalized)) return "assetExternalId";
+  if (["iata", "iatacode", "iatalookup"].includes(normalized)) return "iata";
+  return "address";
+}
+
+function locationEntryMode(item = {}) {
+  if (clean(item.locationEntryMode)) return normalizeLocationEntryMode(item.locationEntryMode);
+  if (clean(item.assetExternalId)) return "assetExternalId";
+  if (clean(item.iata)) return "iata";
+  return "address";
+}
+
 function createItem(overrides = {}, useDefaults = true) {
   const windowDefaults = useDefaults ? defaultWindow() : { arriveDate: "", expireDate: "" };
-  return {
+  const item = {
     id: newId(),
     contactIdType: "id",
     contactIdentifier: "",
+    expectedLocationId: "",
+    recreateFromLocationId: "",
+    sourceContactIdType: "",
+    sourceContactIdentifier: "",
+    syncedFingerprint: "",
+    locationEntryMode: "address",
     locationName: "",
     country: useDefaults ? "US" : "",
     arriveDate: windowDefaults.arriveDate,
@@ -479,6 +527,15 @@ function createItem(overrides = {}, useDefaults = true) {
     },
     ...overrides,
   };
+
+  item.locationEntryMode = locationEntryMode(item);
+
+  if (item.expectedLocationId) {
+    item.sourceContactIdType ||= item.contactIdType;
+    item.sourceContactIdentifier ||= clean(item.contactIdentifier);
+  }
+
+  return item;
 }
 
 function normalizeContactIdType(value) {
@@ -557,6 +614,567 @@ function saveStoredConnection() {
   }
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function formatSessionTimestamp(date = new Date()) {
+  const localDate = new Date(date);
+  localDate.setMinutes(localDate.getMinutes() - localDate.getTimezoneOffset());
+  return localDate.toISOString().slice(0, 16).replace("T", " ");
+}
+
+function defaultSessionName() {
+  return `Schedule ${formatSessionTimestamp()}`;
+}
+
+function legacyItemFingerprint(item) {
+  return JSON.stringify({
+    contactIdType: item.contactIdType,
+    contactIdentifier: clean(item.contactIdentifier),
+    arriveDate: clean(item.arriveDate),
+    expireDate: clean(item.expireDate),
+    assetExternalId: clean(item.assetExternalId),
+    iata: clean(item.iata).toUpperCase(),
+    locationName: clean(item.locationName),
+    streetAddress: clean(item.streetAddress),
+    city: clean(item.city),
+    region: clean(item.region),
+    country: upperClean(item.country),
+    suite: clean(item.suite),
+    postalCode: clean(item.postalCode),
+    lat: clean(item.lat),
+    lon: clean(item.lon),
+  });
+}
+
+function itemFingerprint(item) {
+  return JSON.stringify({
+    locationEntryMode: locationEntryMode(item),
+    ...JSON.parse(legacyItemFingerprint(item)),
+  });
+}
+
+function itemMatchesSyncedFingerprint(item) {
+  return Boolean(item.syncedFingerprint)
+    && (itemFingerprint(item) === item.syncedFingerprint
+      || legacyItemFingerprint(item) === item.syncedFingerprint);
+}
+
+function serializeItem(item) {
+  const expectedLocationId = clean(item.expectedLocationId) || locationIdFromStatusMessage(item.uploadStatus?.message);
+  const sourceContactIdType = expectedLocationId ? item.sourceContactIdType || item.contactIdType : "";
+  const sourceContactIdentifier = expectedLocationId ? clean(item.sourceContactIdentifier || item.contactIdentifier) : "";
+  return {
+    id: item.id,
+    expectedLocationId,
+    recreateFromLocationId: clean(item.recreateFromLocationId),
+    contactIdType: item.contactIdType,
+    contactIdentifier: clean(item.contactIdentifier),
+    sourceContactIdType,
+    sourceContactIdentifier,
+    locationEntryMode: locationEntryMode(item),
+    arriveDate: clean(item.arriveDate),
+    expireDate: clean(item.expireDate),
+    assetExternalId: clean(item.assetExternalId),
+    iata: clean(item.iata).toUpperCase(),
+    locationName: clean(item.locationName),
+    streetAddress: clean(item.streetAddress),
+    city: clean(item.city),
+    region: clean(item.region),
+    country: upperClean(item.country),
+    suite: clean(item.suite),
+    postalCode: clean(item.postalCode),
+    lat: clean(item.lat),
+    lon: clean(item.lon),
+    syncedFingerprint: item.syncedFingerprint || "",
+    uploadStatus: normalizeUploadStatus(item.uploadStatus, item),
+  };
+}
+
+function locationIdFromStatusMessage(message) {
+  return clean(message).match(/Location ID:\s*([^\s]+)/i)?.[1] ?? "";
+}
+
+function normalizeUploadStatus(status, row = {}) {
+  const allowedStates = new Set(["pending", "refreshing", "sending", "success", "warn", "error"]);
+  const expectedLocationId = clean(row?.expectedLocationId) || locationIdFromStatusMessage(status?.message);
+  const hasExpectedLocation = Boolean(expectedLocationId);
+  let state = allowedStates.has(clean(status?.state)) ? clean(status.state) : "";
+  let message = clean(status?.message);
+
+  if (!state) state = hasExpectedLocation ? "success" : "pending";
+
+  if (state === "success" && hasExpectedLocation) {
+    message = `Location ID: ${expectedLocationId}`;
+  }
+
+  if (!message) {
+    if (state === "sending") {
+      message = "Sending...";
+    } else if (state === "refreshing") {
+      message = "Refreshing from Everbridge...";
+    } else {
+      message = hasExpectedLocation ? `Location ID: ${expectedLocationId}` : "Not sent";
+    }
+  }
+
+  return { state, message };
+}
+
+function restoreDraftItem(row) {
+  const item = createItem({
+    ...row,
+    id: clean(row?.id) || newId(),
+    expectedLocationId: clean(row?.expectedLocationId) || locationIdFromStatusMessage(row?.uploadStatus?.message),
+  }, false);
+  item.uploadStatus = normalizeUploadStatus(row?.uploadStatus, item);
+  return item;
+}
+
+function hasUnsyncedLocalItem(item) {
+  return clean(item.expectedLocationId)
+    && Boolean(item.syncedFingerprint)
+    && !itemMatchesSyncedFingerprint(item);
+}
+
+function shouldRecreateLocation(item) {
+  return Boolean(clean(item.recreateFromLocationId));
+}
+
+function pendingLocalItemFromRef(ref) {
+  if (!ref?.lastKnown || typeof ref.lastKnown !== "object") return null;
+
+  const item = restoreDraftItem(ref.lastKnown);
+  if (!hasUnsyncedLocalItem(item)) return null;
+
+  if (!["error", "warn"].includes(item.uploadStatus?.state)) {
+    setRowUploadStatus(item, "pending", "Edited, pending update");
+  }
+  return item;
+}
+
+function restoreLocationItemFromRef(ref) {
+  const pendingLocalItem = pendingLocalItemFromRef(ref);
+  if (pendingLocalItem) return pendingLocalItem;
+
+  const lastKnown = ref?.lastKnown && typeof ref.lastKnown === "object" ? ref.lastKnown : null;
+  const row = lastKnown
+    ? {
+        ...lastKnown,
+        expectedLocationId: ref.locationId,
+        contactIdType: ref.contactIdType,
+        contactIdentifier: ref.contactIdentifier,
+        sourceContactIdType: ref.contactIdType,
+        sourceContactIdentifier: ref.contactIdentifier,
+      }
+    : {
+        expectedLocationId: ref.locationId,
+        contactIdType: ref.contactIdType,
+        contactIdentifier: ref.contactIdentifier,
+        sourceContactIdType: ref.contactIdType,
+        sourceContactIdentifier: ref.contactIdentifier,
+      };
+  const item = restoreDraftItem(row);
+
+  item.expectedLocationId = clean(ref.locationId);
+  item.contactIdType = ref.contactIdType;
+  item.contactIdentifier = clean(ref.contactIdentifier);
+  item.sourceContactIdType = ref.contactIdType;
+  item.sourceContactIdentifier = clean(ref.contactIdentifier);
+  if (shouldRecreateLocation(item)) {
+    item.recreateFromLocationId = clean(item.recreateFromLocationId) || clean(ref.locationId);
+    if (item.uploadStatus?.state !== "error") {
+      markLocationForRecreate(item, ref);
+    }
+    return item;
+  }
+
+  item.syncedFingerprint ||= itemFingerprint(item);
+  setRowUploadStatus(item, "success", `Location ID: ${item.expectedLocationId}`);
+  return item;
+}
+
+function markLocationForRecreate(item, ref, message = "") {
+  const staleLocationId = refKey(ref);
+  item.expectedLocationId = clean(item.expectedLocationId) || staleLocationId;
+  item.recreateFromLocationId = staleLocationId;
+  item.sourceContactIdType = ref.contactIdType || item.sourceContactIdType || item.contactIdType;
+  item.sourceContactIdentifier = clean(ref.contactIdentifier || item.sourceContactIdentifier || item.contactIdentifier);
+  setRowUploadStatus(
+    item,
+    "error",
+    message || `Could not refresh saved location ${staleLocationId}. Apply Changes to recreate it from the saved details.`,
+  );
+  return item;
+}
+
+function normalizeLocationRef(ref) {
+  if (!ref || typeof ref !== "object") return null;
+
+  const lastKnown = ref.lastKnown && typeof ref.lastKnown === "object" ? ref.lastKnown : {};
+  const locationId = clean(ref.locationId ?? ref.expectedLocationId ?? ref.id ?? lastKnown.expectedLocationId);
+  let contactIdType = normalizeContactIdType(ref.contactIdType ?? lastKnown.contactIdType);
+  let contactIdentifier = clean(
+    ref.contactIdentifier
+      ?? ref.contactId
+      ?? ref.contactExternalId
+      ?? lastKnown.sourceContactIdentifier
+      ?? lastKnown.contactIdentifier,
+  );
+
+  if (!locationId || !contactIdentifier) return null;
+
+  let lastKnownRow = Object.keys(lastKnown).length ? restoreDraftItem(lastKnown) : null;
+  if (lastKnownRow) {
+    lastKnownRow.expectedLocationId = locationId;
+    const lastKnownContactIdType = normalizeContactIdType(lastKnownRow.contactIdType);
+    const lastKnownContactIdentifier = clean(lastKnownRow.contactIdentifier);
+    const lastKnownMatchesSyncedRow = lastKnownRow.uploadStatus?.state === "success"
+      && itemMatchesSyncedFingerprint(lastKnownRow);
+
+    if (
+      lastKnownMatchesSyncedRow
+      && lastKnownContactIdentifier
+      && (lastKnownContactIdType !== contactIdType || lastKnownContactIdentifier !== contactIdentifier)
+    ) {
+      contactIdType = lastKnownContactIdType;
+      contactIdentifier = lastKnownContactIdentifier;
+      lastKnownRow.sourceContactIdType = contactIdType;
+      lastKnownRow.sourceContactIdentifier = contactIdentifier;
+    }
+  }
+
+  return {
+    locationId,
+    contactIdType,
+    contactIdentifier,
+    createdAt: clean(ref.createdAt) || clean(lastKnown.createdAt) || nowIso(),
+    updatedAt: clean(ref.updatedAt) || nowIso(),
+    lastKnown: lastKnownRow ? serializeItem(lastKnownRow) : null,
+  };
+}
+
+function refKey(ref) {
+  return clean(ref?.locationId);
+}
+
+function locationRefFromItem(item) {
+  const locationId = clean(item.expectedLocationId);
+  if (!locationId) return null;
+
+  repairStaleSourceContact(item);
+
+  return {
+    locationId,
+    contactIdType: item.sourceContactIdType || item.contactIdType,
+    contactIdentifier: clean(item.sourceContactIdentifier || item.contactIdentifier),
+    createdAt: clean(item.createdAt) || nowIso(),
+    updatedAt: nowIso(),
+    lastKnown: serializeItem(item),
+  };
+}
+
+function removeStoredLocationRef(locationId) {
+  const key = clean(locationId);
+  if (!key) return;
+
+  const session = currentSession();
+  if (session) {
+    session.locationRefs = (session.locationRefs ?? []).filter((ref) => refKey(ref) !== key);
+    session.pendingDeleteRefs = (session.pendingDeleteRefs ?? []).filter((ref) => refKey(ref) !== key);
+  }
+
+  state.pendingDeletes = state.pendingDeletes.filter((ref) => refKey(ref) !== key);
+}
+
+function normalizeSession(session) {
+  if (!session || typeof session !== "object") return null;
+
+  const id = clean(session.id) || newId();
+  const locationRefs = (Array.isArray(session.locationRefs) ? session.locationRefs : [])
+    .map(normalizeLocationRef)
+    .filter(Boolean);
+  const pendingDeleteRefs = (Array.isArray(session.pendingDeleteRefs) ? session.pendingDeleteRefs : [])
+    .map(normalizeLocationRef)
+    .filter(Boolean);
+  const draftRows = (Array.isArray(session.draftRows) ? session.draftRows : [])
+    .filter((row) => row && typeof row === "object")
+    .map((row) => serializeItem(restoreDraftItem(row)));
+  const history = (Array.isArray(session.history) ? session.history : [])
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => ({
+      at: clean(entry.at) || nowIso(),
+      action: clean(entry.action) || "note",
+      details: clean(entry.details),
+    }));
+
+  return {
+    id,
+    name: clean(session.name) || defaultSessionName(),
+    description: clean(session.description),
+    createdAt: clean(session.createdAt) || nowIso(),
+    updatedAt: clean(session.updatedAt) || nowIso(),
+    locationRefs,
+    pendingDeleteRefs,
+    draftRows,
+    history,
+  };
+}
+
+function loadStoredSessions() {
+  let saved;
+  try {
+    saved = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "null");
+  } catch {
+    saved = null;
+  }
+
+  const sessions = Array.isArray(saved) ? saved : saved?.sessions;
+  state.sessions = (Array.isArray(sessions) ? sessions : [])
+    .map(normalizeSession)
+    .filter(Boolean);
+
+  const activeSessionId = clean(saved?.activeSessionId);
+  state.activeSessionId = state.sessions.some((session) => session.id === activeSessionId) ? activeSessionId : "";
+}
+
+function saveStoredSessions() {
+  const store = {
+    version: 1,
+    activeSessionId: state.activeSessionId,
+    sessions: state.sessions,
+  };
+
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(store));
+  } catch {
+    setToast("Schedule storage is unavailable in this browser context.", "warn");
+  }
+}
+
+function currentSession() {
+  return state.sessions.find((session) => session.id === state.activeSessionId) ?? null;
+}
+
+function sessionRefsToRefresh(session = currentSession()) {
+  if (!session) return [];
+
+  const pendingDeleteKeys = new Set((session.pendingDeleteRefs ?? []).map(refKey));
+  return (session.locationRefs ?? []).filter((ref) => !pendingDeleteKeys.has(refKey(ref)));
+}
+
+function isAuthReady() {
+  return Boolean(
+    clean(els.apiBaseUrl.value)
+      && clean(els.organizationId.value)
+      && clean(els.username.value)
+      && els.password.value,
+  );
+}
+
+function scheduleRefreshAuthMessage(session = currentSession()) {
+  const scheduleName = session?.name ? ` "${session.name}"` : "";
+  return `Enter your Everbridge password to refresh schedule${scheduleName} from Everbridge. Local saved details are shown until the refresh completes.`;
+}
+
+function showScheduleRefreshAuthPrompt(session = currentSession(), highlightMissing = false, showToast = true) {
+  if (!session) return false;
+
+  state.pendingAuthRefreshSessionId = session.id;
+  setImportStatus(scheduleRefreshAuthMessage(session), "warn");
+  if (showToast) {
+    setToast("Authentication required to refresh this schedule.", "warn");
+  }
+  if (highlightMissing) {
+    const missing = [els.apiBaseUrl, els.organizationId, els.username, els.password].filter((input) => !clean(input.value));
+    if (missing.length) markInvalid(missing);
+  }
+  renderSessionControls();
+  return true;
+}
+
+function updatePendingScheduleRefreshPrompt() {
+  const session = currentSession();
+  if (!session || state.pendingAuthRefreshSessionId !== session.id) return;
+
+  renderSessionControls();
+  if (isAuthReady()) {
+    setImportStatus(`Authentication complete. Click Refresh to update schedule "${session.name}" from Everbridge.`, "idle");
+  } else {
+    setImportStatus(scheduleRefreshAuthMessage(session), "warn");
+  }
+}
+
+function showRestoredScheduleStatus() {
+  const session = currentSession();
+  if (!session) return;
+
+  if (sessionRefsToRefresh(session).length && !isAuthReady()) {
+    showScheduleRefreshAuthPrompt(session, false, false);
+    return;
+  }
+
+  const refreshHint = sessionRefsToRefresh(session).length
+    ? " Click Refresh to update it from Everbridge."
+    : "";
+  setImportStatus(`Loaded schedule "${session.name}" from this browser.${refreshHint}`, "idle");
+}
+
+function restoreActiveSessionLocally() {
+  const session = currentSession();
+  if (!session) {
+    state.queue = [];
+    state.pendingDeletes = [];
+    state.expandedId = null;
+    return false;
+  }
+
+  const pendingDeleteKeys = new Set((session.pendingDeleteRefs ?? []).map(refKey));
+  const persistedRows = (session.locationRefs ?? [])
+    .filter((ref) => !pendingDeleteKeys.has(refKey(ref)))
+    .map(restoreLocationItemFromRef);
+  const draftRows = (session.draftRows ?? []).map(restoreDraftItem);
+
+  state.queue = [...persistedRows, ...draftRows];
+  state.pendingDeletes = (session.pendingDeleteRefs ?? []).map(normalizeLocationRef).filter(Boolean);
+  state.expandedId = null;
+  return true;
+}
+
+function queueIndexForLocationRef(ref) {
+  return state.queue.findIndex((item) => clean(item.expectedLocationId) === clean(ref?.locationId));
+}
+
+function replaceQueueLocationRef(ref, item) {
+  const index = queueIndexForLocationRef(ref);
+  if (index >= 0) {
+    state.queue[index] = item;
+  } else {
+    state.queue.push(item);
+  }
+}
+
+function addSessionHistory(session, action, details = "") {
+  if (!session) return;
+  session.history = Array.isArray(session.history) ? session.history : [];
+  session.history.unshift({
+    at: nowIso(),
+    action,
+    details,
+  });
+  session.history = session.history.slice(0, 250);
+  session.updatedAt = nowIso();
+}
+
+function createSession(name = defaultSessionName(), description = "") {
+  const now = nowIso();
+  const session = {
+    id: newId(),
+    name: clean(name) || defaultSessionName(),
+    description: clean(description),
+    createdAt: now,
+    updatedAt: now,
+    locationRefs: [],
+    pendingDeleteRefs: [],
+    draftRows: [],
+    history: [],
+  };
+
+  addSessionHistory(session, "created", "Schedule created.");
+  state.sessions.unshift(session);
+  state.activeSessionId = session.id;
+  state.pendingDeletes = [];
+  saveStoredSessions();
+  renderSessionControls();
+  return session;
+}
+
+function sessionSummary(session) {
+  if (!session) return "No schedule selected";
+
+  const activeRefs = session.locationRefs?.length ?? 0;
+  const pendingUpdates = (session.locationRefs ?? []).filter(pendingLocalItemFromRef).length;
+  const draftRows = (session.draftRows?.length ?? 0) + pendingUpdates;
+  const pendingDeletes = session.pendingDeleteRefs?.length ?? state.pendingDeletes.length;
+  const parts = [
+    `${activeRefs} location${activeRefs === 1 ? "" : "s"}`,
+    `${draftRows} draft${draftRows === 1 ? "" : "s"}`,
+  ];
+  if (pendingDeletes) parts.push(`${pendingDeletes} pending delete${pendingDeletes === 1 ? "" : "s"}`);
+  return parts.join(" · ");
+}
+
+function renderSessionControls() {
+  const session = currentSession();
+  const options = ['<option value="">No schedule selected</option>']
+    .concat(state.sessions.map((storedSession) => {
+      const selected = storedSession.id === state.activeSessionId ? " selected" : "";
+      const label = `${storedSession.name} (${sessionSummary(storedSession)})`;
+      return `<option value="${escapeAttr(storedSession.id)}"${selected}>${escapeHtml(label)}</option>`;
+    }));
+
+  els.sessionSelect.innerHTML = options.join("");
+  els.sessionName.value = session?.name ?? "";
+  els.sessionDescription.value = session?.description ?? "";
+  els.sessionMeta.textContent = sessionSummary(session);
+
+  const disabled = state.isSending || state.isLoadingSession;
+  const canRefresh = Boolean(session && sessionRefsToRefresh(session).length && isAuthReady());
+  els.sessionSelect.disabled = disabled;
+  els.sessionName.disabled = !session || disabled;
+  els.sessionDescription.disabled = !session || disabled;
+  els.refreshSession.disabled = !canRefresh || disabled;
+  els.deleteSession.disabled = !session || disabled;
+  els.newSession.disabled = disabled;
+}
+
+function saveActiveSessionFromQueue(action = "", details = "") {
+  const session = currentSession();
+  if (!session) return null;
+
+  session.name = clean(els.sessionName.value) || session.name || defaultSessionName();
+  session.description = clean(els.sessionDescription.value);
+
+  const pendingDeleteKeys = new Set(state.pendingDeletes.map(refKey));
+  const refsById = new Map(
+    (session.locationRefs ?? [])
+      .filter((ref) => refKey(ref) && !pendingDeleteKeys.has(refKey(ref)))
+      .map((ref) => [refKey(ref), ref]),
+  );
+
+  state.queue.forEach((item) => {
+    const ref = locationRefFromItem(item);
+    if (ref && !pendingDeleteKeys.has(refKey(ref))) {
+      refsById.set(refKey(ref), ref);
+    }
+  });
+
+  session.locationRefs = [...refsById.values()];
+  session.pendingDeleteRefs = state.pendingDeletes.map(normalizeLocationRef).filter(Boolean);
+  session.draftRows = state.queue
+    .filter((item) => !clean(item.expectedLocationId))
+    .map(serializeItem);
+
+  if (action) {
+    addSessionHistory(session, action, details);
+  } else {
+    session.updatedAt = nowIso();
+  }
+
+  saveStoredSessions();
+  renderSessionControls();
+  return session;
+}
+
+function autoSaveActiveSession(action = "", details = "", description = "Created from local draft.") {
+  if (!currentSession() && (state.queue.length || state.pendingDeletes.length)) {
+    createSession(defaultSessionName(), description);
+  }
+
+  return saveActiveSessionFromQueue(action, details);
+}
+
 function setApiBaseUrlMenu(open) {
   els.apiBaseUrlMenu.hidden = !open;
   els.apiBaseUrlToggle.setAttribute("aria-expanded", String(open));
@@ -593,17 +1211,19 @@ function selectFieldComboOption(option) {
   if (!input) return;
 
   input.value = option.dataset.value ?? "";
-  item[input.dataset.field] = normalizedInputValue(input, item);
-  markRowEdited(item);
+  applyInputValueToItem(input, item);
+  autoSaveActiveSession();
   renderQueue();
 }
 
 function hasPageContentToLose() {
-  return state.queue.length > 0 || Boolean(els.password.value);
+  return state.queue.length > 0 || state.pendingDeletes.length > 0 || Boolean(els.password.value);
 }
 
 function requestContactIdType() {
-  return state.queue[0]?.contactIdType ?? "id";
+  return state.queue.find((item) => !clean(item.expectedLocationId))?.contactIdType
+    ?? state.queue[0]?.contactIdType
+    ?? "id";
 }
 
 function normalizedRestBaseUrl() {
@@ -611,15 +1231,52 @@ function normalizedRestBaseUrl() {
   return base.endsWith("/rest") ? base : `${base}/rest`;
 }
 
-function endpointUrl() {
+function createEndpointUrl(contactIdType = requestContactIdType()) {
   const base = normalizedRestBaseUrl();
   const orgId = encodeURIComponent(clean(els.organizationId.value));
   const params = new URLSearchParams({
-    contactIdType: requestContactIdType(),
+    contactIdType,
     returnIds: "true",
   });
 
   return `${base}/expectedLocations/${orgId}?${params.toString()}`;
+}
+
+function expectedLocationItemUrl(refOrItem) {
+  const base = normalizedRestBaseUrl();
+  const orgId = encodeURIComponent(clean(els.organizationId.value));
+  const contactIdType = refOrItem.sourceContactIdType || refOrItem.contactIdType || "id";
+  const contactIdentifier = clean(refOrItem.sourceContactIdentifier || refOrItem.contactIdentifier);
+  const expectedLocationId = clean(refOrItem.expectedLocationId || refOrItem.locationId);
+  const params = new URLSearchParams({ contactIdType });
+
+  return `${base}/expectedLocations/${orgId}/${encodeURIComponent(contactIdentifier)}/${encodeURIComponent(expectedLocationId)}?${params.toString()}`;
+}
+
+function contactExpectedLocationsUrl(refOrItem) {
+  const base = normalizedRestBaseUrl();
+  const orgId = encodeURIComponent(clean(els.organizationId.value));
+  const contactIdType = refOrItem.sourceContactIdType || refOrItem.contactIdType || "id";
+  const contactIdentifier = clean(refOrItem.sourceContactIdentifier || refOrItem.contactIdentifier);
+  const params = new URLSearchParams({ contactIdType });
+
+  return `${base}/expectedLocations/${orgId}/${encodeURIComponent(contactIdentifier)}?${params.toString()}`;
+}
+
+function deleteBatchUrl() {
+  const base = normalizedRestBaseUrl();
+  const orgId = encodeURIComponent(clean(els.organizationId.value));
+  return `${base}/expectedLocations/${orgId}/batch`;
+}
+
+function authHeaders(includeJson = true) {
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Basic ${basicAuth(clean(els.username.value), els.password.value)}`,
+  };
+
+  if (includeJson) headers["Content-Type"] = "application/json";
+  return headers;
 }
 
 function refreshEndpointPreview() {
@@ -635,8 +1292,7 @@ function refreshEndpointPreview() {
 }
 
 function refreshAuthStatus() {
-  const ready = clean(els.apiBaseUrl.value) && clean(els.organizationId.value) && clean(els.username.value) && els.password.value;
-  els.authStatus.classList.toggle("ready", Boolean(ready));
+  els.authStatus.classList.toggle("ready", isAuthReady());
 }
 
 function setToast(message, type = "") {
@@ -715,18 +1371,19 @@ function hasCompleteAddressLocation(item) {
 }
 
 function locationSummary(item) {
-  const assetExternalId = clean(item.assetExternalId);
-  if (assetExternalId) {
+  const mode = locationEntryMode(item);
+  if (mode === "assetExternalId") {
+    const assetExternalId = clean(item.assetExternalId);
     return {
-      title: assetExternalId,
+      title: assetExternalId || "Missing Asset External ID",
       subtitle: "Asset External ID",
     };
   }
 
-  const iata = clean(item.iata).toUpperCase();
-  if (iata) {
+  if (mode === "iata") {
+    const iata = clean(item.iata).toUpperCase();
     return {
-      title: iata,
+      title: iata || "Missing IATA",
       subtitle: "IATA",
     };
   }
@@ -738,17 +1395,18 @@ function locationSummary(item) {
 }
 
 function addressLookupSummary(item) {
-  if (hasAssetLocation(item)) {
+  const mode = locationEntryMode(item);
+  if (mode === "assetExternalId") {
     return {
       title: "Asset Lookup",
-      subtitle: clean(item.assetExternalId),
+      subtitle: clean(item.assetExternalId) || "Missing Asset External ID",
     };
   }
 
-  if (hasIataLocation(item)) {
+  if (mode === "iata") {
     return {
       title: "IATA Lookup",
-      subtitle: clean(item.iata).toUpperCase(),
+      subtitle: clean(item.iata).toUpperCase() || "Missing IATA",
     };
   }
 
@@ -782,6 +1440,80 @@ function contactIdTypeLabel(value) {
   return value === "externalId" ? "External ID" : "Contact ID";
 }
 
+function isFailedItem(item) {
+  return item.uploadStatus?.state === "error";
+}
+
+function isContactFieldKey(fieldKey) {
+  return CONTACT_FIELD_KEYS.has(fieldKey);
+}
+
+function contactChangedFromRef(item, ref) {
+  return item.contactIdType !== ref.contactIdType
+    || clean(item.contactIdentifier) !== clean(ref.contactIdentifier);
+}
+
+function isContactLocked(item, fieldKey) {
+  if (!isContactFieldKey(fieldKey) || isFailedItem(item) || shouldRecreateLocation(item)) return false;
+  return Boolean(clean(item.expectedLocationId));
+}
+
+function showLockedContactMessage(itemId = "") {
+  state.lockedContactNoticeId = clean(itemId);
+  renderQueue();
+}
+
+function repairStaleSourceContact(item) {
+  if (!clean(item.expectedLocationId) || isFailedItem(item) || shouldRecreateLocation(item)) return false;
+
+  const sourceType = item.sourceContactIdType || item.contactIdType;
+  const sourceContact = clean(item.sourceContactIdentifier || item.contactIdentifier);
+  const contactChanged = item.contactIdType !== sourceType || clean(item.contactIdentifier) !== sourceContact;
+  if (!contactChanged) return false;
+
+  const unchangedSinceSync = item.uploadStatus?.state === "success"
+    && itemMatchesSyncedFingerprint(item);
+  if (!unchangedSinceSync) return false;
+
+  item.sourceContactIdType = item.contactIdType;
+  item.sourceContactIdentifier = clean(item.contactIdentifier);
+  return true;
+}
+
+function detachFailedExpectedLocationForContactChange(item, previousRef) {
+  if (!previousRef) return;
+
+  const previousKey = refKey(previousRef);
+  removeStoredLocationRef(previousKey);
+  item.expectedLocationId = "";
+  item.recreateFromLocationId = "";
+  item.sourceContactIdType = "";
+  item.sourceContactIdentifier = "";
+  item.syncedFingerprint = "";
+  setRowUploadStatus(item, "pending", "Edited, not sent");
+}
+
+function applyInputValueToItem(input, item) {
+  const fieldKey = input.dataset.field;
+  const previousRef = isFailedItem(item) && clean(item.expectedLocationId) && isContactFieldKey(fieldKey)
+    ? locationRefFromItem(item)
+    : null;
+
+  item[fieldKey] = normalizedInputValue(input, item);
+
+  if (!clean(item.expectedLocationId) && isContactFieldKey(fieldKey)) {
+    item.sourceContactIdType = "";
+    item.sourceContactIdentifier = "";
+  }
+
+  if (previousRef && contactChangedFromRef(item, previousRef)) {
+    detachFailedExpectedLocationForContactChange(item, previousRef);
+    return;
+  }
+
+  markRowEdited(item);
+}
+
 function validateItem(item) {
   const errors = [];
 
@@ -790,10 +1522,23 @@ function validateItem(item) {
   }
 
   if (!clean(item.contactIdentifier)) errors.push("Contact Identifier is required.");
+  if (clean(item.expectedLocationId) && !isFailedItem(item)) {
+    repairStaleSourceContact(item);
+    const sourceType = item.sourceContactIdType || item.contactIdType;
+    const sourceContact = clean(item.sourceContactIdentifier || item.contactIdentifier);
+    if (item.contactIdType !== sourceType || clean(item.contactIdentifier) !== sourceContact) {
+      errors.push("Existing Expected Locations cannot change contact. Delete the row and add a new row for another contact.");
+    }
+  }
   if (!clean(item.arriveDate)) errors.push("Arrival is required.");
   if (!clean(item.expireDate)) errors.push("Expiration is required.");
-  if (!hasAssetLocation(item) && !hasIataLocation(item) && !hasCompleteAddressLocation(item)) {
-    errors.push("Location requires Asset External ID, IATA, or Location Name with Street Address, City, State/Province, and Country.");
+  const mode = locationEntryMode(item);
+  if (mode === "assetExternalId" && !hasAssetLocation(item)) {
+    errors.push("Asset External ID is required for this location entry method.");
+  } else if (mode === "iata" && !hasIataLocation(item)) {
+    errors.push("IATA is required for this location entry method.");
+  } else if (mode === "address" && !hasCompleteAddressLocation(item)) {
+    errors.push("Address entry requires Location Name, Street Address, City, State/Province, and Country.");
   }
 
   const arriveIso = toIsoFromLocal(item.arriveDate);
@@ -806,8 +1551,8 @@ function validateItem(item) {
     errors.push("Expiration must be after arrival.");
   }
 
-  const lat = parseCoordinate(item.lat, "Latitude", errors);
-  const lon = parseCoordinate(item.lon, "Longitude", errors);
+  const lat = mode === "address" ? parseCoordinate(item.lat, "Latitude", errors) : null;
+  const lon = mode === "address" ? parseCoordinate(item.lon, "Longitude", errors) : null;
 
   if ((lat === null) !== (lon === null)) {
     errors.push("Latitude and Longitude must be entered together.");
@@ -827,22 +1572,27 @@ function validateItem(item) {
 function buildWrapper(item) {
   const country = upperClean(item.country);
   const region = country === "US" ? upperClean(item.region) : clean(item.region);
+  const mode = locationEntryMode(item);
   const address = {
     arriveDate: toIsoFromLocal(item.arriveDate),
     expireDate: toIsoFromLocal(item.expireDate),
   };
 
-  optionalText(address, "assetExternalId", item.assetExternalId);
-  optionalText(address, "iata", item.iata.toUpperCase());
-  optionalText(address, "locationName", item.locationName);
-  optionalText(address, "streetAddress", item.streetAddress);
-  optionalText(address, "suite", item.suite);
-  optionalText(address, "city", item.city);
-  optionalText(address, "state", region);
-  optionalText(address, "country", country);
-  optionalText(address, "postalCode", item.postalCode);
+  if (mode === "assetExternalId") {
+    optionalText(address, "assetExternalId", item.assetExternalId);
+  } else if (mode === "iata") {
+    optionalText(address, "iata", item.iata.toUpperCase());
+  } else {
+    optionalText(address, "locationName", item.locationName);
+    optionalText(address, "streetAddress", item.streetAddress);
+    optionalText(address, "suite", item.suite);
+    optionalText(address, "city", item.city);
+    optionalText(address, "state", region);
+    optionalText(address, "country", country);
+    optionalText(address, "postalCode", item.postalCode);
+  }
 
-  if (clean(item.lat) && clean(item.lon)) {
+  if (mode === "address" && clean(item.lat) && clean(item.lon)) {
     address.gisLocation = {
       lat: Number(clean(item.lat)),
       lon: Number(clean(item.lon)),
@@ -859,29 +1609,26 @@ function buildWrapper(item) {
   return wrapper;
 }
 
-function payload() {
-  return state.queue.map(buildWrapper);
-}
-
-function sameContactIdType() {
-  const types = new Set(state.queue.map((item) => item.contactIdType));
-  return types.size <= 1;
+function payload(items = state.queue) {
+  return items.map(buildWrapper);
 }
 
 function setRowUploadStatus(item, status, message) {
-  item.uploadStatus = {
-    state: status,
-    message: clean(message),
-  };
+  item.uploadStatus = normalizeUploadStatus({ state: status, message }, item);
 }
 
-function setAllUploadStatuses(status, message) {
-  state.queue.forEach((item) => setRowUploadStatus(item, status, message));
+function setAllUploadStatuses(status, message, items = state.queue) {
+  items.forEach((item) => setRowUploadStatus(item, status, message));
 }
 
 function markRowEdited(item) {
-  if (item.uploadStatus?.state === "sending") return;
-  setRowUploadStatus(item, "pending", "Edited, not sent");
+  if (state.isSending && item.uploadStatus?.state === "sending") return;
+  const message = shouldRecreateLocation(item)
+    ? "Edited, pending recreate"
+    : clean(item.expectedLocationId)
+      ? "Edited, pending update"
+      : "Edited, not sent";
+  setRowUploadStatus(item, "pending", message);
 }
 
 function responseEntries(body) {
@@ -916,45 +1663,45 @@ function responseEntries(body) {
   return [];
 }
 
-function normalizeResponseIndex(value, isLineNumber = false) {
+function normalizeResponseIndex(value, isLineNumber = false, items = state.queue) {
   const match = String(value ?? "").match(/\d+/);
   if (!match) return null;
 
   const number = Number(match[0]);
   if (!Number.isInteger(number)) return null;
 
-  if (isLineNumber && number >= 2 && number <= state.queue.length + 1) {
+  if (isLineNumber && number >= 2 && number <= items.length + 1) {
     return number - 2;
   }
 
-  if (number >= 0 && number < state.queue.length) {
+  if (number >= 0 && number < items.length) {
     return number;
   }
 
-  if (number >= 1 && number <= state.queue.length) {
+  if (number >= 1 && number <= items.length) {
     return number - 1;
   }
 
   return null;
 }
 
-function rowIndexFromText(text) {
+function rowIndexFromText(text, items = state.queue) {
   const value = clean(text);
   if (!value) return null;
 
   const lineMatch = value.match(/\bline\D{0,12}(\d+)\b/i);
   if (lineMatch) {
-    const index = normalizeResponseIndex(lineMatch[1], true);
+    const index = normalizeResponseIndex(lineMatch[1], true, items);
     if (index !== null) return index;
   }
 
   const rowMatch = value.match(/\b(?:row|record|item|index)\D{0,12}(\d+)\b/i);
   if (rowMatch) {
-    const index = normalizeResponseIndex(rowMatch[1]);
+    const index = normalizeResponseIndex(rowMatch[1], false, items);
     if (index !== null) return index;
   }
 
-  const matches = state.queue
+  const matches = items
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => {
       const contact = clean(item.contactIdentifier);
@@ -996,16 +1743,16 @@ function isErrorLikeMessage(message) {
     || value.includes("cannot");
 }
 
-function rowIndexFromEntry(entry, fallbackIndex = null) {
+function rowIndexFromEntry(entry, fallbackIndex = null, items = state.queue) {
   if (entry && typeof entry === "object") {
     if ("key" in entry && "value" in entry) {
-      const keyIndex = normalizeResponseIndex(entry.key);
+      const keyIndex = normalizeResponseIndex(entry.key, false, items);
       if (keyIndex !== null) return keyIndex;
     }
 
     const source = "value" in entry && Object.keys(entry).length === 2 && "key" in entry ? entry.value : entry;
     if (!source || typeof source !== "object") {
-      const textIndex = rowIndexFromText(entryText(entry));
+      const textIndex = rowIndexFromText(entryText(entry), items);
       return textIndex !== null ? textIndex : fallbackIndex;
     }
 
@@ -1015,21 +1762,21 @@ function rowIndexFromEntry(entry, fallbackIndex = null) {
 
     for (const field of directFields) {
       if (source[field] !== undefined) {
-        const index = normalizeResponseIndex(source[field]);
+        const index = normalizeResponseIndex(source[field], false, items);
         if (index !== null) return index;
       }
     }
 
     for (const field of oneBasedFields) {
       if (source[field] !== undefined) {
-        const index = normalizeResponseIndex(source[field]);
+        const index = normalizeResponseIndex(source[field], false, items);
         if (index !== null) return index;
       }
     }
 
     for (const field of lineFields) {
       if (source[field] !== undefined) {
-        const index = normalizeResponseIndex(source[field], true);
+        const index = normalizeResponseIndex(source[field], true, items);
         if (index !== null) return index;
       }
     }
@@ -1038,12 +1785,12 @@ function rowIndexFromEntry(entry, fallbackIndex = null) {
     for (const field of contactFields) {
       const contact = clean(source[field]);
       if (!contact) continue;
-      const matchIndex = state.queue.findIndex((item) => clean(item.contactIdentifier) === contact);
+      const matchIndex = items.findIndex((item) => clean(item.contactIdentifier) === contact);
       if (matchIndex >= 0) return matchIndex;
     }
   }
 
-  const textIndex = rowIndexFromText(entryText(entry));
+  const textIndex = rowIndexFromText(entryText(entry), items);
   if (textIndex !== null) return textIndex;
 
   return fallbackIndex;
@@ -1061,7 +1808,7 @@ function statusFromEntry(entry, result, fallbackStatus) {
     const statusTextValue = source && typeof source === "object" ? clean(source.status ?? source.state ?? source.result).toLowerCase() : "";
     const code = source && typeof source === "object" ? Number(source.code ?? source.statusCode) : NaN;
     const success = source && typeof source === "object" ? source.success : undefined;
-    const createdId = source && typeof source === "object" ? source.id ?? source.expectedLocationId ?? source.createdId : "";
+    const createdId = source && typeof source === "object" ? source.expectedLocationId ?? source.locationId ?? source.id ?? source.createdId : "";
 
     if (success === true || statusTextValue.includes("success") || statusTextValue === "ok" || code === 100) {
       return {
@@ -1094,52 +1841,125 @@ function statusFromEntry(entry, result, fallbackStatus) {
   return { state: fallbackStatus, message: message || result.toast };
 }
 
-function applyResponseToRows(result) {
+function expectedLocationIdFromEntry(entry) {
+  const message = entryText(entry);
+  if (isCreatedIdMessage(message)) return clean(message);
+
+  if (entry && typeof entry === "object") {
+    const source = "value" in entry && Object.keys(entry).length === 2 && "key" in entry ? entry.value : entry;
+    if (source && typeof source === "object") {
+      const id = source.expectedLocationId ?? source.locationId ?? source.id ?? source.createdId;
+      if (clean(id)) return clean(id);
+    }
+  }
+
+  return "";
+}
+
+function markItemSynced(item, message = "", resetSourceContact = false) {
+  const replacedLocationId = clean(item.recreateFromLocationId);
+  if (replacedLocationId && clean(item.expectedLocationId) !== replacedLocationId) {
+    removeStoredLocationRef(replacedLocationId);
+    item.recreateFromLocationId = "";
+  }
+
+  if (clean(item.expectedLocationId)) {
+    item.sourceContactIdType = resetSourceContact ? item.contactIdType : item.sourceContactIdType || item.contactIdType;
+    item.sourceContactIdentifier = resetSourceContact
+      ? clean(item.contactIdentifier)
+      : clean(item.sourceContactIdentifier || item.contactIdentifier);
+  }
+
+  item.syncedFingerprint = itemFingerprint(item);
+  setRowUploadStatus(
+    item,
+    "success",
+    message || (clean(item.expectedLocationId) ? `Location ID: ${clean(item.expectedLocationId)}` : "Sent"),
+  );
+}
+
+function isItemDirty(item) {
+  if (shouldRecreateLocation(item)) return true;
+  if (!clean(item.expectedLocationId)) return true;
+  if (item.uploadStatus?.state === "pending") return true;
+  return Boolean(item.syncedFingerprint) && !itemMatchesSyncedFingerprint(item);
+}
+
+function applyResponseToRows(result, items = state.queue) {
   const entries = responseEntries(result.body);
   const message = clean(responseDetails(result.body)) || result.toast;
 
   if (result.ok) {
-    if (entries.length === state.queue.length) {
+    if (entries.length === items.length) {
       entries.forEach((entry, index) => {
         const status = statusFromEntry(entry, result, "success");
-        setRowUploadStatus(state.queue[index], status.state, status.message);
+        const item = items[index];
+        const locationId = expectedLocationIdFromEntry(entry);
+        const wasUnsent = !clean(item.expectedLocationId) || shouldRecreateLocation(item);
+        if (status.state === "success" && locationId) item.expectedLocationId = locationId;
+        if (status.state === "success") {
+          markItemSynced(item, status.message, wasUnsent);
+        } else {
+          setRowUploadStatus(item, status.state, status.message);
+        }
       });
       return;
     }
 
-    setAllUploadStatuses("success", message || "Sent");
+    items.forEach((item) => setRowUploadStatus(item, "warn", message || "Sent, but no Expected Location ID was returned."));
     return;
   }
 
   const fallbackStatus = result.type === "warn" ? "warn" : "error";
-  const positional = entries.length === state.queue.length;
+  const positional = entries.length === items.length;
   const mappedRows = new Set();
 
   if (result.type === "warn" && entries.length) {
-    setAllUploadStatuses("success", "Sent");
+    items.forEach((item) => markItemSynced(item, "Sent"));
   } else {
-    setAllUploadStatuses(fallbackStatus, message);
+    setAllUploadStatuses(fallbackStatus, message, items);
   }
 
   entries.forEach((entry, index) => {
-    const rowIndex = rowIndexFromEntry(entry, positional ? index : null);
-    if (rowIndex === null || !state.queue[rowIndex]) return;
+    const rowIndex = rowIndexFromEntry(entry, positional ? index : null, items);
+    if (rowIndex === null || !items[rowIndex]) return;
 
     const status = statusFromEntry(entry, result, fallbackStatus);
-    setRowUploadStatus(state.queue[rowIndex], status.state, status.message || message);
+    const item = items[rowIndex];
+    const locationId = expectedLocationIdFromEntry(entry);
+    const wasUnsent = !clean(item.expectedLocationId) || shouldRecreateLocation(item);
+    if (status.state === "success" && locationId) item.expectedLocationId = locationId;
+    if (status.state === "success") {
+      markItemSynced(item, status.message || message, wasUnsent);
+    } else {
+      setRowUploadStatus(item, status.state, status.message || message);
+    }
     mappedRows.add(rowIndex);
   });
 
   if (!mappedRows.size && result.type === "warn") {
-    setAllUploadStatuses("warn", message);
+    setAllUploadStatuses("warn", message, items);
   }
 }
 
+function hasChangesToApply() {
+  return state.pendingDeletes.length > 0 || state.queue.some(isItemDirty);
+}
+
+function refreshQueueActions() {
+  const pendingDeleteCount = state.pendingDeletes.length;
+  els.queueCount.textContent = `${state.queue.length} row${state.queue.length === 1 ? "" : "s"}${pendingDeleteCount ? ` · ${pendingDeleteCount} delete${pendingDeleteCount === 1 ? "" : "s"}` : ""}`;
+  els.sendImport.textContent = state.queue.some((item) => clean(item.expectedLocationId)) || pendingDeleteCount
+    ? "Apply Changes"
+    : "Send to Everbridge";
+  els.sendImport.disabled = !hasChangesToApply() || state.isSending || state.isLoadingSession;
+  els.clearQueue.disabled = state.queue.length === 0 || state.isSending || state.isLoadingSession;
+}
+
 function renderQueue() {
-  els.queueCount.textContent = `${state.queue.length} row${state.queue.length === 1 ? "" : "s"}`;
-  els.sendImport.disabled = state.queue.length === 0 || state.isSending;
-  els.clearQueue.disabled = state.queue.length === 0 || state.isSending;
+  refreshQueueActions();
   refreshEndpointPreview();
+  renderSessionControls();
 
   if (!state.queue.length) {
     els.queueBody.innerHTML = '<tr class="empty-row"><td colspan="7">No rows loaded</td></tr>';
@@ -1157,11 +1977,11 @@ function renderQueue() {
     row.className = `summary-row ${expanded ? "expanded" : ""} ${errors.length ? "invalid" : ""}`.trim();
     row.innerHTML = `
       <td><button class="icon-button expand-button" type="button" data-toggle="${item.id}" aria-label="${expanded ? "Collapse" : "Expand"} row ${index + 1}" title="${expanded ? "Collapse" : "Expand"}"${disabled}>${expanded ? ICONS.chevronDown : ICONS.chevronRight}</button></td>
-      <td>
+      <td class="contact-cell">
         <span class="row-title">${escapeHtml(clean(item.contactIdentifier) || "Missing contact")}</span>
         <span class="row-subtitle">${contactIdTypeLabel(item.contactIdType)}${errors.length ? ` · ${errors.length} issue${errors.length === 1 ? "" : "s"}` : ""}</span>
       </td>
-      <td>
+      <td class="timeframe-cell">
         <span class="row-title">${escapeHtml(formatDateForTable(item.arriveDate) || "Missing arrival")}</span>
         <span class="row-title">${escapeHtml(formatDateForTable(item.expireDate) || "Missing expiration")}</span>
       </td>
@@ -1173,13 +1993,13 @@ function renderQueue() {
         <span class="row-title">${escapeHtml(addressLookup.title)}</span>
         <span class="row-subtitle">${escapeHtml(addressLookup.subtitle)}</span>
       </td>
-      <td>
+      <td class="status-cell">
         ${renderUploadStatus(item)}
       </td>
       <td class="actions-cell">
         <div class="row-actions">
           <button class="icon-button row-action-button" type="button" data-toggle="${item.id}" aria-label="${expanded ? "Done Editing Row" : "Edit Row"}" title="${expanded ? "Done" : "Edit"}"${disabled}>${expanded ? ICONS.check : ICONS.edit}</button>
-          <button class="icon-button row-action-button danger" type="button" data-remove="${item.id}" aria-label="Remove Row" title="Remove"${disabled}>${ICONS.trash}</button>
+          <button class="icon-button row-action-button danger" type="button" data-remove="${item.id}" aria-label="Remove Row" title="${clean(item.expectedLocationId) ? "Delete" : "Remove"}"${disabled}>${ICONS.trash}</button>
         </div>
       </td>
     `;
@@ -1198,6 +2018,7 @@ function renderUploadStatus(item) {
   const status = item.uploadStatus ?? { state: "pending", message: "Not sent" };
   const labels = {
     pending: "Not sent",
+    refreshing: "Refreshing",
     sending: "Sending",
     success: "Sent",
     warn: "Review",
@@ -1211,16 +2032,25 @@ function renderUploadStatus(item) {
 
 function renderEditor(item, errors) {
   const errorHtml = errors.map((error) => `<div>${escapeHtml(error)}</div>`).join("");
-  const fields = FIELD_DEFS.map((field) => renderField(item, field)).join("");
+  const fields = visibleFieldDefsForItem(item).map((field) => renderField(item, field)).join("");
+  const lockedContactNotice = state.lockedContactNoticeId === item.id
+    ? `<div class="editor-inline-notice" role="status">${escapeHtml(LOCKED_CONTACT_MESSAGE)}</div>`
+    : "";
   return `
     <div class="row-editor">
       <div class="editor-errors">${errorHtml}</div>
       <div class="field-grid">${fields}</div>
       <div class="editor-actions">
+        ${lockedContactNotice}
         <button class="primary" type="button" data-toggle="${item.id}"${state.isSending ? " disabled" : ""}>Done</button>
       </div>
     </div>
   `;
+}
+
+function visibleFieldDefsForItem(item) {
+  const mode = locationEntryMode(item);
+  return FIELD_DEFS.filter((field) => !field.locationModes || field.locationModes.includes(mode));
 }
 
 function optionsInclude(options, value) {
@@ -1248,6 +2078,7 @@ function selectOptionsForField(item, field, value) {
 
 function fieldValue(item, field) {
   const value = item[field.key] ?? "";
+  if (field.key === "locationEntryMode") return locationEntryMode(item);
   if (field.key === "country") return upperClean(value);
   if (field.key === "region" && upperClean(item.country) === "US") return upperClean(value);
   return value;
@@ -1277,13 +2108,36 @@ function renderEditableComboField(item, field, value, options, common, required,
   `;
 }
 
+function renderLockedContactField(item, field, value, options, common, required, wide) {
+  const lockedCommon = `${common} aria-disabled="true" tabindex="-1"`;
+  const lockedAttrs = `class="${wide} locked-contact-field" data-contact-locked="true" data-id="${escapeAttr(item.id)}" title="${escapeAttr(LOCKED_CONTACT_MESSAGE)}"`;
+
+  if (field.type === "select" || options) {
+    const selectOptions = options
+      .map(([optionValue, label]) => `<option value="${optionValue}"${value === optionValue ? " selected" : ""}>${escapeHtml(label)}</option>`)
+      .join("");
+    return `<label ${lockedAttrs}>${escapeHtml(field.label)}<select ${lockedCommon}${required}>${selectOptions}</select></label>`;
+  }
+
+  const type = field.type ?? "text";
+  const placeholder = field.placeholder ? ` placeholder="${escapeAttr(field.placeholder)}"` : "";
+  const maxLength = field.maxLength ? ` maxlength="${field.maxLength}"` : "";
+  const inputmode = field.inputmode ? ` inputmode="${field.inputmode}"` : "";
+  return `<label ${lockedAttrs}>${escapeHtml(field.label)}<input ${lockedCommon} type="${type}" value="${escapeAttr(value)}"${placeholder}${maxLength}${inputmode}${required} readonly></label>`;
+}
+
 function renderField(item, field) {
   const value = fieldValue(item, field);
   const common = `data-id="${item.id}" data-field="${field.key}"`;
   const required = field.required ? " required" : "";
+  const contactLocked = isContactLocked(item, field.key);
   const disabled = state.isSending ? " disabled" : "";
   const wide = field.wide ? " wide" : "";
   const selectOptions = selectOptionsForField(item, field, value);
+
+  if (contactLocked) {
+    return renderLockedContactField(item, field, value, selectOptions, common, required, wide);
+  }
 
   if (selectOptions && isEditableComboField(field)) {
     return renderEditableComboField(item, field, value, selectOptions, common, required, disabled, wide);
@@ -1317,6 +2171,10 @@ function escapeAttr(value) {
 }
 
 function normalizedInputValue(input, item) {
+  if (input.dataset.field === "locationEntryMode") {
+    return normalizeLocationEntryMode(input.value);
+  }
+
   if (input.dataset.field === "iata" || input.dataset.field === "country") {
     return upperClean(input.value);
   }
@@ -1400,7 +2258,7 @@ function itemFromCsvRow(headers, row) {
 
   const country = upperClean(raw.country);
 
-  return createItem({
+  const itemData = {
     contactIdType: normalizeContactIdType(contactIdType),
     contactIdentifier,
     locationName: clean(raw.locationName),
@@ -1416,7 +2274,12 @@ function itemFromCsvRow(headers, row) {
     assetExternalId: clean(raw.assetExternalId),
     lat: clean(raw.lat),
     lon: clean(raw.lon),
-  }, false);
+  };
+  itemData.locationEntryMode = clean(raw.locationEntryMode)
+    ? normalizeLocationEntryMode(raw.locationEntryMode)
+    : locationEntryMode(itemData);
+
+  return createItem(itemData, false);
 }
 
 async function loadCsvFile(file) {
@@ -1438,15 +2301,34 @@ async function loadCsvFile(file) {
     throw new Error("CSV did not contain any rows to load.");
   }
 
-  state.queue.push(...items);
-  state.expandedId = items.find((item) => validateItem(item).length)?.id ?? null;
+  autoSaveActiveSession("", "", "Created from local draft before CSV import.");
+  let session = currentSession();
+  const appendedToExisting = Boolean(session);
+
+  if (session) {
+    state.queue = [...state.queue, ...items];
+  } else {
+    session = createSession(defaultSessionName(), file?.name ? `CSV import: ${file.name}` : "");
+    state.queue = items;
+    state.pendingDeletes = [];
+  }
+
+  state.expandedId = null;
+  addSessionHistory(
+    session,
+    "csvLoaded",
+    `${appendedToExisting ? "Added" : "Loaded"} ${items.length} row${items.length === 1 ? "" : "s"} from ${file?.name || "CSV"}.`,
+  );
+  saveActiveSessionFromQueue();
   renderQueue();
 
-  const invalidCount = items.filter((item) => validateItem(item).length).length;
+  const invalidCount = state.queue.filter((item) => validateItem(item).length).length;
+  const action = appendedToExisting ? "Added" : "Loaded";
+  const target = appendedToExisting ? "to the current schedule" : "from CSV";
   if (invalidCount) {
-    setImportStatus(`Loaded ${items.length} rows from CSV. ${invalidCount} row${invalidCount === 1 ? "" : "s"} need review before sending.`, "warn");
+    setImportStatus(`${action} ${items.length} row${items.length === 1 ? "" : "s"} ${target}. ${invalidCount} row${invalidCount === 1 ? "" : "s"} need review before sending.`, "warn");
   } else {
-    setImportStatus(`Loaded ${items.length} rows from CSV. Review the table, then send to Everbridge.`, "success");
+    setImportStatus(`${action} ${items.length} row${items.length === 1 ? "" : "s"} ${target}. Review the table, then send to Everbridge.`, "success");
   }
 }
 
@@ -1563,65 +2445,515 @@ async function readResponse(response) {
   }
 }
 
-async function sendImport() {
+function apiErrorMessage(response, body, fallback = "Everbridge request failed.") {
+  const detail = responseDetails(body).trim();
+  const status = `${response.status} ${response.statusText}`.trim();
+  return detail ? `${status}: ${detail}` : `${status}: ${fallback}`;
+}
+
+function isMissingExpectedLocationResponse(response, body) {
+  const details = `${response.status} ${response.statusText} ${responseDetails(body)}`.toLowerCase();
+  return response.status === 404
+    && details.includes("expected location")
+    && details.includes("not found");
+}
+
+function toLocalInputFromApiDate(value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "number" && Number.isFinite(value)) return toLocalInput(value);
+
+  const trimmed = clean(value);
+  if (/^\d+$/.test(trimmed) && trimmed.length >= 11) {
+    return toLocalInput(Number(trimmed));
+  }
+
+  return toLocalInputFromCsv(trimmed);
+}
+
+function itemFromApiExpectedLocation(result, ref) {
+  const source = result?.result && typeof result.result === "object" ? result.result : result;
+  const address = source?.address && typeof source.address === "object" ? source.address : {};
+  const locationId = clean(source?.id ?? ref.locationId);
+  const contactIdType = ref.contactIdType || normalizeContactIdType(source?.contactExternalId ? "externalId" : "id");
+  const contactIdentifier = clean(ref.contactIdentifier)
+    || (contactIdType === "externalId" ? clean(source?.contactExternalId) : clean(source?.contactId));
+  const gisLocation = address.gisLocation && typeof address.gisLocation === "object" ? address.gisLocation : {};
+
+  const item = createItem({
+    expectedLocationId: locationId,
+    contactIdType,
+    contactIdentifier,
+    sourceContactIdType: contactIdType,
+    sourceContactIdentifier: contactIdentifier,
+    locationEntryMode: locationEntryMode(address),
+    locationName: clean(address.locationName),
+    country: clean(address.country),
+    arriveDate: toLocalInputFromApiDate(address.arriveDate),
+    expireDate: toLocalInputFromApiDate(address.expireDate),
+    streetAddress: clean(address.streetAddress),
+    suite: clean(address.suite),
+    city: clean(address.city),
+    region: clean(address.state),
+    postalCode: clean(address.postalCode),
+    iata: clean(address.iata).toUpperCase(),
+    assetExternalId: clean(address.assetExternalId),
+    lat: clean(gisLocation.lat),
+    lon: clean(gisLocation.lon),
+    uploadStatus: {
+      state: "success",
+      message: locationId ? `Location ID: ${locationId}` : "Loaded from Everbridge",
+    },
+  }, false);
+
+  item.syncedFingerprint = itemFingerprint(item);
+  return item;
+}
+
+async function fetchExpectedLocation(ref) {
+  const response = await fetch(expectedLocationItemUrl(ref), {
+    method: "GET",
+    headers: authHeaders(false),
+  });
+  const body = await readResponse(response);
+
+  if (response.ok) {
+    return itemFromApiExpectedLocation(body, ref);
+  }
+
+  if (response.status === 404) {
+    return fetchExpectedLocationFromContactList(ref);
+  }
+
+  throw new Error(apiErrorMessage(response, body, `Could not load Expected Location ${ref.locationId}.`));
+}
+
+async function fetchExpectedLocationFromContactList(ref) {
+  const response = await fetch(contactExpectedLocationsUrl(ref), {
+    method: "GET",
+    headers: authHeaders(false),
+  });
+  const body = await readResponse(response);
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(response, body, `Could not list Expected Locations for contact ${ref.contactIdentifier}.`));
+  }
+
+  const locations = Array.isArray(body?.result) ? body.result : [];
+  const match = locations.find((entry) => clean(entry?.id) === clean(ref.locationId));
+  if (!match) {
+    throw new Error(`Expected Location ${ref.locationId} was not found for contact ${ref.contactIdentifier}.`);
+  }
+
+  return itemFromApiExpectedLocation(match, ref);
+}
+
+async function loadSelectedSessionFromEverbridge() {
+  const session = currentSession();
+  if (!session) {
+    setToast("Select a schedule to load.", "warn");
+    return;
+  }
+
+  const refsToLoad = sessionRefsToRefresh(session);
+  if (refsToLoad.length && !isAuthReady()) {
+    showScheduleRefreshAuthPrompt(session, true);
+    return;
+  }
+
+  try {
+    state.isLoadingSession = true;
+    state.pendingAuthRefreshSessionId = "";
+    renderSessionControls();
+
+    if (refsToLoad.length) validateConnection();
+    setImportStatus(`Loading ${refsToLoad.length} saved Expected Location${refsToLoad.length === 1 ? "" : "s"} from Everbridge...`, "sending");
+
+    const loadedRows = [];
+    const failures = [];
+    for (const ref of refsToLoad) {
+      const pendingLocalItem = pendingLocalItemFromRef(ref);
+      const localIndex = queueIndexForLocationRef(ref);
+      const localItem = localIndex >= 0 ? state.queue[localIndex] : null;
+      if (localItem) {
+        setRowUploadStatus(localItem, "refreshing", "Refreshing from Everbridge...");
+        autoSaveActiveSession();
+        renderQueue();
+      }
+
+      try {
+        const loadedItem = await fetchExpectedLocation(ref);
+        const row = pendingLocalItem ?? loadedItem;
+        loadedRows.push(row);
+        replaceQueueLocationRef(ref, row);
+        autoSaveActiveSession();
+        renderQueue();
+      } catch (error) {
+        if (pendingLocalItem) {
+          loadedRows.push(pendingLocalItem);
+          replaceQueueLocationRef(ref, pendingLocalItem);
+          autoSaveActiveSession();
+          renderQueue();
+          failures.push(`${error.message} Local unsent changes were restored.`);
+        } else {
+          const failureItem = localItem ?? restoreLocationItemFromRef(ref);
+          markLocationForRecreate(failureItem, ref);
+          loadedRows.push(failureItem);
+          replaceQueueLocationRef(ref, failureItem);
+          autoSaveActiveSession();
+          renderQueue();
+          failures.push(error.message);
+        }
+      }
+    }
+
+    const draftRows = (session.draftRows ?? []).map(restoreDraftItem);
+    state.queue = [...loadedRows, ...draftRows];
+    state.pendingDeletes = (session.pendingDeleteRefs ?? []).map(normalizeLocationRef).filter(Boolean);
+    state.expandedId = null;
+    addSessionHistory(session, "loaded", `Loaded ${loadedRows.length} Expected Location${loadedRows.length === 1 ? "" : "s"} from Everbridge.`);
+    saveActiveSessionFromQueue();
+    renderQueue();
+
+    if (failures.length) {
+      setImportStatus(`Loaded ${loadedRows.length} rows. ${failures.length} saved location${failures.length === 1 ? "" : "s"} could not be retrieved: ${failures.join(" ")}`, "warn");
+      setToast("Schedule loaded with retrieval warnings.", "warn");
+    } else {
+      const source = refsToLoad.length ? " from Everbridge" : "";
+      setImportStatus(`Loaded schedule "${session.name}"${source}. Edit rows or remove rows, then apply changes.`, "success");
+      setToast("Schedule loaded.", "success");
+    }
+  } catch (error) {
+    const message = error instanceof TypeError
+      ? "Request blocked or network unavailable. Check CORS, VPN, and API Base URL."
+      : error.message;
+    setImportStatus(`Schedule load failed: ${message}`, "error");
+    setToast(message, "error");
+  } finally {
+    state.isLoadingSession = false;
+    renderQueue();
+  }
+}
+
+async function createExpectedLocations(items) {
+  if (!items.length) return null;
+
+  const contactType = items[0].contactIdType;
+  setAllUploadStatuses("sending", "Creating...", items);
+  autoSaveActiveSession();
+  renderQueue();
+
+  const response = await fetch(createEndpointUrl(contactType), {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(payload(items)),
+  });
+
+  const body = await readResponse(response);
+  const result = classifyEverbridgeResponse(response, body);
+  applyResponseToRows(result, items);
+  autoSaveActiveSession();
+  return result;
+}
+
+async function updateExpectedLocation(item) {
+  setRowUploadStatus(item, "sending", "Updating...");
+  autoSaveActiveSession();
+  renderQueue();
+
+  const response = await fetch(expectedLocationItemUrl(item), {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify(buildWrapper(item).address),
+  });
+
+  const body = await readResponse(response);
+  const result = classifyEverbridgeResponse(response, body);
+  if (!result.ok) {
+    if (isMissingExpectedLocationResponse(response, body)) {
+      const staleRef = locationRefFromItem(item);
+      if (staleRef) {
+        markLocationForRecreate(
+          item,
+          staleRef,
+          `Expected Location ${staleRef.locationId} was not found in Everbridge. Recreating it from the saved details...`,
+        );
+        autoSaveActiveSession();
+        renderQueue();
+        const recreateResult = await createExpectedLocations([item]);
+        return { ...recreateResult, recreated: true, originalResult: result };
+      }
+    }
+
+    setRowUploadStatus(item, result.type === "warn" ? "warn" : "error", statusText(result));
+    autoSaveActiveSession();
+    return result;
+  }
+
+  const id = clean(body?.id ?? item.expectedLocationId);
+  if (id) item.expectedLocationId = id;
+  markItemSynced(item, id ? `Location ID: ${id}` : "Updated");
+  autoSaveActiveSession();
+  return result;
+}
+
+function deleteGenuineFailureIds(body) {
+  return responseEntries(body)
+    .map(entryText)
+    .filter(Boolean)
+    .filter((message) => isErrorLikeMessage(message) && !message.toLowerCase().includes("not found"))
+    .map((message) => clean(message.match(/\d+/)?.[0]))
+    .filter(Boolean);
+}
+
+async function deleteExpectedLocations(refs) {
+  if (!refs.length) return null;
+
+  const locationIds = refs.map(refKey).filter(Boolean);
+  const response = await fetch(deleteBatchUrl(), {
+    method: "DELETE",
+    headers: authHeaders(),
+    body: JSON.stringify(locationIds),
+  });
+
+  const body = await readResponse(response);
+  const result = classifyEverbridgeResponse(response, body);
+  const entries = responseEntries(body);
+  const failedIds = result.ok ? [] : (entries.length ? deleteGenuineFailureIds(body) : locationIds);
+  const failedIdSet = new Set(failedIds);
+  const removedIdSet = new Set(locationIds.filter((locationId) => !failedIdSet.has(locationId)));
+
+  state.pendingDeletes = refs.filter((ref) => failedIdSet.has(refKey(ref)));
+  const session = currentSession();
+  if (session && removedIdSet.size) {
+    session.locationRefs = (session.locationRefs ?? []).filter((ref) => !removedIdSet.has(refKey(ref)));
+    session.pendingDeleteRefs = state.pendingDeletes;
+    addSessionHistory(session, "deleted", `Deleted ${removedIdSet.size} Expected Location${removedIdSet.size === 1 ? "" : "s"}.`);
+  }
+
+  return {
+    ...result,
+    removedIds: [...removedIdSet],
+    failedIds,
+  };
+}
+
+async function deleteExpectedLocationNow(item) {
+  const ref = locationRefFromItem(item);
+  if (!ref) return;
+
   try {
     validateConnection();
+    state.isSending = true;
+    setRowUploadStatus(item, "sending", "Deleting...");
+    autoSaveActiveSession();
+    renderQueue();
 
-    if (!state.queue.length) {
-      setToast("No rows to send.", "warn");
+    const result = await deleteExpectedLocations([ref]);
+    const removed = result?.removedIds?.includes(refKey(ref));
+
+    if (!removed) {
+      const message = result ? statusText(result) : "Delete failed.";
+      state.pendingDeletes = state.pendingDeletes.filter((pendingRef) => refKey(pendingRef) !== refKey(ref));
+      setRowUploadStatus(item, result?.type === "warn" ? "warn" : "error", message);
+      autoSaveActiveSession();
+      setImportStatus(`Delete failed: ${message}`, "error");
+      setToast("Delete failed.", "error");
       return;
     }
+
+    state.queue = state.queue.filter((row) => row.id !== item.id);
+    state.pendingDeletes = state.pendingDeletes.filter((pendingRef) => refKey(pendingRef) !== refKey(ref));
+    if (state.expandedId === item.id) state.expandedId = null;
+    autoSaveActiveSession();
+    setImportStatus(`Expected Location ${ref.locationId} deleted from Everbridge.`, "success");
+    setToast("Expected Location deleted.", "success");
+  } catch (error) {
+    const message = error instanceof TypeError
+      ? "Request blocked or network unavailable. Check CORS, VPN, and API Base URL."
+      : error.message;
+    setRowUploadStatus(item, "error", message);
+    autoSaveActiveSession();
+    setImportStatus(`Delete failed: ${message}`, "error");
+    setToast(message, "error");
+  } finally {
+    state.isSending = false;
+    autoSaveActiveSession();
+    renderQueue();
+  }
+}
+
+async function deleteAllExpectedLocationsNow() {
+  if (!state.queue.length) {
+    setToast("No rows to delete.", "warn");
+    return;
+  }
+
+  const persistedEntries = state.queue
+    .map((item) => ({
+      item,
+      ref: locationRefFromItem(item) || { locationId: clean(item.expectedLocationId) },
+    }))
+    .filter(({ ref }) => refKey(ref));
+  const persistedRefs = persistedEntries.map(({ ref }) => ref);
+  const draftCount = state.queue.length - persistedEntries.length;
+  const expectedLocationCount = persistedEntries.length;
+  const confirmMessage = expectedLocationCount
+    ? `Delete all ${state.queue.length} row${state.queue.length === 1 ? "" : "s"} in this schedule? ${expectedLocationCount} Expected Location${expectedLocationCount === 1 ? "" : "s"} will be deleted from Everbridge immediately. ${draftCount ? `${draftCount} draft row${draftCount === 1 ? "" : "s"} will be removed locally. ` : ""}Rows that fail to delete will stay visible.`
+    : `Delete all ${state.queue.length} local draft row${state.queue.length === 1 ? "" : "s"}?`;
+
+  if (!window.confirm(confirmMessage)) return;
+
+  try {
+    if (persistedRefs.length) validateConnection();
+
+    state.isSending = true;
+    persistedEntries.forEach(({ item }) => setRowUploadStatus(item, "sending", "Deleting..."));
+    autoSaveActiveSession();
+    renderQueue();
+
+    const result = persistedRefs.length ? await deleteExpectedLocations(persistedRefs) : null;
+    const removedIdSet = new Set(result?.removedIds ?? []);
+    const failedIdSet = new Set(result?.failedIds ?? []);
+    const attemptedIdSet = new Set(persistedRefs.map(refKey));
+
+    state.pendingDeletes = state.pendingDeletes.filter((ref) => !attemptedIdSet.has(refKey(ref)));
+    state.queue = state.queue.filter((item) => {
+      const locationId = clean(item.expectedLocationId);
+      if (!locationId) return false;
+      return !removedIdSet.has(locationId);
+    });
+
+    if (failedIdSet.size) {
+      const message = result ? statusText(result) : "Delete failed.";
+      state.queue
+        .filter((item) => failedIdSet.has(clean(item.expectedLocationId)))
+        .forEach((item) => setRowUploadStatus(item, result?.type === "warn" ? "warn" : "error", message));
+    }
+
+    if (state.expandedId && !state.queue.some((item) => item.id === state.expandedId)) {
+      state.expandedId = null;
+    }
+
+    autoSaveActiveSession();
+
+    const removedCount = removedIdSet.size;
+    if (failedIdSet.size) {
+      const deletedPart = removedCount ? `${removedCount} Expected Location${removedCount === 1 ? "" : "s"} deleted. ` : "";
+      setImportStatus(`${deletedPart}${failedIdSet.size} Expected Location${failedIdSet.size === 1 ? "" : "s"} could not be deleted and remain visible.`, "warn");
+      setToast("Delete All completed with warnings.", "warn");
+    } else if (expectedLocationCount) {
+      const draftPart = draftCount ? ` ${draftCount} draft row${draftCount === 1 ? "" : "s"} removed locally.` : "";
+      setImportStatus(`Deleted ${removedCount} Expected Location${removedCount === 1 ? "" : "s"} from Everbridge.${draftPart}`, "success");
+      setToast("All rows deleted.", "success");
+    } else {
+      setImportStatus("All local draft rows deleted.", "success");
+      setToast("All draft rows deleted.", "success");
+    }
+  } catch (error) {
+    const message = error instanceof TypeError
+      ? "Request blocked or network unavailable. Check CORS, VPN, and API Base URL."
+      : error.message;
+    persistedEntries.forEach(({ item }) => setRowUploadStatus(item, "error", message));
+    autoSaveActiveSession();
+    setImportStatus(`Delete All failed: ${message}`, "error");
+    setToast(message, "error");
+  } finally {
+    state.isSending = false;
+    autoSaveActiveSession();
+    renderQueue();
+  }
+}
+
+async function sendImport() {
+  try {
+    if (!state.queue.length && !state.pendingDeletes.length) {
+      setToast("No changes to apply.", "warn");
+      return;
+    }
+
+    autoSaveActiveSession("", "", "Created from manual row entry.");
+    validateConnection();
 
     const invalidIndex = state.queue.findIndex((item) => validateItem(item).length);
     if (invalidIndex >= 0) {
       const errors = validateItem(state.queue[invalidIndex]);
       setRowUploadStatus(state.queue[invalidIndex], "error", errors[0]);
-      state.expandedId = state.queue[invalidIndex].id;
+      autoSaveActiveSession();
       renderQueue();
       setImportStatus(`Fix row ${invalidIndex + 1}: ${errors[0]}`, "error");
       setToast("Fix row issues before sending.", "error");
       return;
     }
 
-    if (!sameContactIdType()) {
-      setAllUploadStatuses("warn", "Split Contact ID and External ID rows into separate sends.");
-      renderQueue();
-      setImportStatus("Rows must use one contact ID type per Everbridge request. Split Contact ID and External ID rows into separate sends.", "error");
-      setToast("Rows use mixed contact ID types.", "error");
+    const createRows = state.queue.filter((item) => !clean(item.expectedLocationId) || shouldRecreateLocation(item));
+    const updateRows = state.queue.filter((item) => clean(item.expectedLocationId) && !shouldRecreateLocation(item) && isItemDirty(item));
+    const deleteRefs = [...state.pendingDeletes];
+
+    if (!createRows.length && !updateRows.length && !deleteRefs.length) {
+      autoSaveActiveSession();
+      setImportStatus("No schedule changes to apply.", "idle");
+      setToast("No changes to apply.", "warn");
       return;
     }
 
+    autoSaveActiveSession();
     state.isSending = true;
     els.sendImport.textContent = "Sending";
-    setAllUploadStatuses("sending", "Sending...");
     renderQueue();
-    setImportStatus(`Sending ${state.queue.length} row${state.queue.length === 1 ? "" : "s"} to Everbridge...`, "sending");
+    setImportStatus(`Applying ${createRows.length} create, ${updateRows.length} update, and ${deleteRefs.length} delete operation${createRows.length + updateRows.length + deleteRefs.length === 1 ? "" : "s"}...`, "sending");
 
-    const response = await fetch(endpointUrl(), {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Basic ${basicAuth(clean(els.username.value), els.password.value)}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload()),
-    });
+    const createTypes = [...new Set(createRows.map((item) => item.contactIdType))];
+    for (const contactIdType of createTypes) {
+      const group = createRows.filter((item) => item.contactIdType === contactIdType);
+      await createExpectedLocations(group);
+      autoSaveActiveSession();
+    }
 
-    const body = await readResponse(response);
-    const result = classifyEverbridgeResponse(response, body);
-    applyResponseToRows(result);
-    setImportStatus(statusText(result), result.type);
-    setToast(result.toast, result.type);
+    let recreatedUpdateCount = 0;
+    for (const item of updateRows) {
+      const result = await updateExpectedLocation(item);
+      if (result?.recreated) recreatedUpdateCount += 1;
+      autoSaveActiveSession();
+    }
+
+    if (deleteRefs.length) {
+      await deleteExpectedLocations(deleteRefs);
+      autoSaveActiveSession();
+    }
+
+    const session = currentSession();
+    if (session) {
+      const totalCreates = createRows.length + recreatedUpdateCount;
+      const totalUpdates = updateRows.length - recreatedUpdateCount;
+      addSessionHistory(session, "synced", `Applied ${totalCreates} create, ${totalUpdates} update, and ${deleteRefs.length} delete operation${totalCreates + totalUpdates + deleteRefs.length === 1 ? "" : "s"}.`);
+    }
+    autoSaveActiveSession();
+
+    const issueCount = state.queue.filter((item) => ["warn", "error"].includes(item.uploadStatus?.state)).length + state.pendingDeletes.length;
+    if (issueCount) {
+      setImportStatus(`Sync completed with ${issueCount} item${issueCount === 1 ? "" : "s"} needing review.`, "warn");
+      setToast("Sync completed with warnings.", "warn");
+    } else {
+      setImportStatus("Schedule changes applied to Everbridge.", "success");
+      setToast("Schedule changes applied.", "success");
+    }
   } catch (error) {
     const message = error instanceof TypeError
       ? "Request blocked or network unavailable. Check CORS, VPN, and API Base URL."
       : error.message;
-    setAllUploadStatuses("error", message);
+    state.queue
+      .filter((item) => item.uploadStatus?.state === "sending")
+      .forEach((item) => setRowUploadStatus(item, "error", message));
+    const session = currentSession();
+    if (session) {
+      addSessionHistory(session, "syncFailed", message);
+    }
+    autoSaveActiveSession();
     setImportStatus(`Error: ${message}`, "error");
     setToast(message, "error");
   } finally {
     state.isSending = false;
-    els.sendImport.textContent = "Send to Everbridge";
+    autoSaveActiveSession();
     renderQueue();
   }
 }
@@ -1629,7 +2961,8 @@ async function sendImport() {
 els.addRow.addEventListener("click", () => {
   const item = createItem();
   state.queue.push(item);
-  state.expandedId = item.id;
+  state.expandedId = null;
+  autoSaveActiveSession("", "", "Created from manual row entry.");
   renderQueue();
   setImportStatus("New row added. Fill required fields before sending.", "idle");
 });
@@ -1653,8 +2986,95 @@ els.csvFile.addEventListener("change", async () => {
   }
 });
 
-els.queueBody.addEventListener("click", (event) => {
+els.sessionSelect.addEventListener("change", async () => {
+  const selectedSessionId = clean(els.sessionSelect.value);
+  autoSaveActiveSession("", "", "Created from local draft before schedule switch.");
+  state.activeSessionId = selectedSessionId;
+  const session = currentSession();
+  restoreActiveSessionLocally();
+  saveStoredSessions();
+  renderQueue();
+
+  if (session) {
+    await loadSelectedSessionFromEverbridge();
+  } else {
+    state.pendingAuthRefreshSessionId = "";
+    setImportStatus("No schedule selected. Add a row or load a CSV, then send reviewed rows to Everbridge.", "idle");
+  }
+});
+
+els.refreshSession.addEventListener("click", async () => {
+  const session = currentSession();
+  if (!session) return;
+
+  if (!sessionRefsToRefresh(session).length) {
+    setImportStatus(`Schedule "${session.name}" has no saved Everbridge locations to refresh.`, "idle");
+    return;
+  }
+
+  await loadSelectedSessionFromEverbridge();
+});
+
+els.newSession.addEventListener("click", () => {
+  if ((state.queue.length || state.pendingDeletes.length) && !window.confirm("Start a new empty schedule? Current schedule changes are saved locally before switching.")) {
+    return;
+  }
+
+  autoSaveActiveSession("", "", "Created from local draft before schedule switch.");
+  createSession();
+  state.queue = [];
+  state.pendingDeletes = [];
+  state.expandedId = null;
+  state.pendingAuthRefreshSessionId = "";
+  saveActiveSessionFromQueue();
+  renderQueue();
+  setImportStatus("New schedule created. Add rows or load a CSV, then apply changes.", "idle");
+});
+
+els.deleteSession.addEventListener("click", () => {
+  const session = currentSession();
+  if (!session) return;
+
+  const confirmed = window.confirm("Delete the currently selected local schedule? This does not delete Expected Locations from Everbridge.");
+  if (!confirmed) return;
+
+  state.sessions = state.sessions.filter((storedSession) => storedSession.id !== session.id);
+  state.activeSessionId = "";
+  state.queue = [];
+  state.pendingDeletes = [];
+  state.expandedId = null;
+  state.pendingAuthRefreshSessionId = "";
+  saveStoredSessions();
+  renderQueue();
+  setImportStatus("Current local schedule deleted. Expected Locations in Everbridge were not changed.", "warn");
+  setToast("Current schedule deleted.", "warn");
+});
+
+[els.sessionName, els.sessionDescription].forEach((input) => {
+  input.addEventListener("input", () => {
+    const session = currentSession();
+    if (!session) return;
+
+    session.name = clean(els.sessionName.value) || session.name;
+    session.description = clean(els.sessionDescription.value);
+    session.updatedAt = nowIso();
+    saveStoredSessions();
+  });
+
+  input.addEventListener("change", () => {
+    saveActiveSessionFromQueue();
+  });
+});
+
+els.queueBody.addEventListener("click", async (event) => {
   if (state.isSending) return;
+
+  const lockedContactField = event.target.closest("[data-contact-locked]");
+  if (lockedContactField) {
+    event.preventDefault();
+    showLockedContactMessage(lockedContactField.dataset.id);
+    return;
+  }
 
   const fieldOption = event.target.closest("[data-field-combo-option]");
   if (fieldOption) {
@@ -1674,6 +3094,7 @@ els.queueBody.addEventListener("click", (event) => {
   const toggle = event.target.closest("[data-toggle]");
   if (toggle) {
     state.expandedId = state.expandedId === toggle.dataset.toggle ? null : toggle.dataset.toggle;
+    state.lockedContactNoticeId = null;
     renderQueue();
     return;
   }
@@ -1681,8 +3102,20 @@ els.queueBody.addEventListener("click", (event) => {
   const remove = event.target.closest("[data-remove]");
   if (!remove) return;
 
+  const item = state.queue.find((row) => row.id === remove.dataset.remove);
+  if (!item) return;
+
+  if (clean(item.expectedLocationId)) {
+    const confirmed = window.confirm("Delete this Expected Location from Everbridge now? The row will stay visible if the delete fails.");
+    if (!confirmed) return;
+
+    await deleteExpectedLocationNow(item);
+    return;
+  }
+
   state.queue = state.queue.filter((item) => item.id !== remove.dataset.remove);
   if (state.expandedId === remove.dataset.remove) state.expandedId = null;
+  autoSaveActiveSession();
   renderQueue();
 });
 
@@ -1709,8 +3142,14 @@ els.queueBody.addEventListener("input", (event) => {
   const item = state.queue.find((row) => row.id === input.dataset.id);
   if (!item) return;
 
-  item[input.dataset.field] = normalizedInputValue(input, item);
-  markRowEdited(item);
+  if (isContactLocked(item, input.dataset.field)) {
+    showLockedContactMessage(item.id);
+    return;
+  }
+
+  applyInputValueToItem(input, item);
+  autoSaveActiveSession();
+  refreshQueueActions();
   refreshEndpointPreview();
 });
 
@@ -1721,22 +3160,17 @@ els.queueBody.addEventListener("change", (event) => {
   const item = state.queue.find((row) => row.id === input.dataset.id);
   if (!item) return;
 
-  item[input.dataset.field] = normalizedInputValue(input, item);
-  markRowEdited(item);
-  renderQueue();
-});
-
-els.clearQueue.addEventListener("click", () => {
-  if (state.queue.length && !window.confirm("Clear Rows? The current table content will be lost.")) {
+  if (isContactLocked(item, input.dataset.field)) {
+    showLockedContactMessage(item.id);
     return;
   }
 
-  state.queue = [];
-  state.expandedId = null;
+  applyInputValueToItem(input, item);
+  autoSaveActiveSession();
   renderQueue();
-  setImportStatus("Rows cleared. Add a row or load a CSV, then send reviewed rows to Everbridge.");
-  setToast("Rows cleared.");
 });
+
+els.clearQueue.addEventListener("click", deleteAllExpectedLocationsNow);
 
 els.sendImport.addEventListener("click", sendImport);
 
@@ -1778,24 +3212,32 @@ document.addEventListener("click", (event) => {
     saveStoredConnection();
     refreshEndpointPreview();
     refreshAuthStatus();
+    renderSessionControls();
+    updatePendingScheduleRefreshPrompt();
   });
   input.addEventListener("change", () => {
     saveStoredConnection();
     refreshEndpointPreview();
     refreshAuthStatus();
+    renderSessionControls();
+    updatePendingScheduleRefreshPrompt();
   });
 });
 
 els.password.addEventListener("input", () => {
   refreshEndpointPreview();
   refreshAuthStatus();
+  renderSessionControls();
+  updatePendingScheduleRefreshPrompt();
 });
 els.password.addEventListener("change", () => {
   refreshEndpointPreview();
   refreshAuthStatus();
+  renderSessionControls();
+  updatePendingScheduleRefreshPrompt();
 });
 
-document.querySelectorAll("input, select").forEach((input) => {
+document.querySelectorAll("input, select, textarea").forEach((input) => {
   input.addEventListener("input", () => input.classList.remove("invalid"));
 });
 
@@ -1807,7 +3249,11 @@ window.addEventListener("beforeunload", (event) => {
 });
 
 loadStoredConnection();
+loadStoredSessions();
+restoreActiveSessionLocally();
 setupTemplateDownload();
 refreshEndpointPreview();
 refreshAuthStatus();
+renderSessionControls();
 renderQueue();
+showRestoredScheduleStatus();

@@ -65,6 +65,46 @@
           </div>
         </section>
 
+        <section class="panel session-panel" aria-labelledby="scheduleTitle">
+          <div class="panel-heading schedule-heading">
+            <div class="queue-title">
+              <h2 id="scheduleTitle">Schedule</h2>
+              <span class="count-badge" id="sessionMeta">No schedule selected</span>
+            </div>
+            <div class="schedule-controls">
+              <label class="schedule-select-control">
+                <span>Saved Schedules</span>
+                <select id="sessionSelect" name="sessionSelect">
+                  <option value="">No schedule selected</option>
+                </select>
+              </label>
+              <button class="secondary" type="button" id="newSession" aria-label="New Schedule" title="New Schedule">
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+                <span>New</span>
+              </button>
+              <button class="secondary danger-button" type="button" id="deleteSession" aria-label="Delete Current Schedule" title="Delete Current Schedule">
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>
+                <span>Delete</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="session-grid">
+            <label class="schedule-field-row">
+              <span>Schedule Name</span>
+              <input id="sessionName" name="sessionName" autocomplete="off" placeholder="Schedule 2026-05-18 09:00">
+            </label>
+            <label class="schedule-field-row">
+              <span>Description</span>
+              <textarea id="sessionDescription" name="sessionDescription" rows="2" placeholder="Schedule context, owner, or import notes"></textarea>
+            </label>
+          </div>
+
+          <p class="schedule-storage-note">
+            Saved schedules are stored only in this browser on this computer. Use the same browser to return to this work, and coordinate with your team before switching devices or clearing browser data.
+          </p>
+        </section>
+
         <section class="panel locations-panel" aria-labelledby="locationsTitle">
           <div class="panel-heading">
             <div class="queue-title">
@@ -75,8 +115,18 @@
               <a class="button-link secondary" id="downloadTemplate" href="#" download="expected-locations-template.csv">Download CSV Template</a>
               <button class="secondary" type="button" id="loadCsv">Load CSV</button>
               <input id="csvFile" type="file" accept=".csv,text/csv" hidden>
-              <button class="secondary" type="button" id="addRow">Add Row</button>
-              <button class="secondary" type="button" id="clearQueue">Clear Rows</button>
+              <button class="secondary" type="button" id="refreshSession" aria-label="Refresh Schedule" title="Refresh Schedule">
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2"></path><path d="M3 12A9 9 0 0 1 18.5 5.8"></path><path d="M18 2v4h4"></path><path d="M6 22v-4H2"></path></svg>
+                <span>Refresh</span>
+              </button>
+              <button class="secondary" type="button" id="addRow" aria-label="Add Row" title="Add Row">
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+                <span>Add</span>
+              </button>
+              <button class="secondary danger-button" type="button" id="clearQueue" aria-label="Delete All Expected Locations" title="Delete All Expected Locations">
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>
+                <span>Delete All</span>
+              </button>
               <button class="primary" type="button" id="sendImport">Send to Everbridge</button>
             </div>
           </div>
@@ -88,11 +138,11 @@
               <thead>
                 <tr>
                   <th class="narrow-col"></th>
-                  <th>Contact ID</th>
-                  <th>Timeframe</th>
+                  <th class="contact-col">Contact ID</th>
+                  <th class="timeframe-col">Timeframe</th>
                   <th>Location</th>
                   <th>Address / Lookup</th>
-                  <th>Status</th>
+                  <th class="status-col">Status</th>
                   <th class="actions-col"></th>
                 </tr>
               </thead>
