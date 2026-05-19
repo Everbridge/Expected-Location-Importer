@@ -287,6 +287,7 @@ Schedule actions:
 - `Export`: saves the current schedule to a JSON file for handoff to another authorized assistant or workstation
 - `Delete`: removes only the currently selected local schedule record; it does not delete Everbridge Expected Locations
 - `Refresh` in the Expected Locations section: retrieves the selected schedule's saved Expected Locations from Everbridge after authentication is complete
+- `Refresh` processes saved Expected Locations in the current table order from top to bottom, matching the active Contact or Timeframe sort.
 - successful refresh from Everbridge overwrites pending local edits for saved Expected Locations and marks those rows as `Refreshed`; unsent draft rows without an Expected Location ID remain local because they have no server record to refresh
 - loading a CSV into the active schedule, adding or editing rows, removing rows, deleting selected rows, switching schedules, and sending to Everbridge automatically saves the active schedule locally
 - changing the schedule Time Zone automatically saves the schedule; it does not rewrite existing row times because each row stores its own effective Time Zone

@@ -2039,6 +2039,23 @@ function sessionRefsToRefresh(session = currentSession()) {
   return (session.locationRefs ?? []).filter((ref) => !pendingDeleteKeys.has(refKey(ref)));
 }
 
+function sessionRefsToRefreshInQueueOrder(session = currentSession()) {
+  const refs = sessionRefsToRefresh(session);
+  if (!refs.length) return [];
+
+  const refsByKey = new Map(refs.map((ref) => [refKey(ref), ref]).filter(([key]) => key));
+  const orderedRefs = [];
+  state.queue.forEach((item) => {
+    const ref = refsByKey.get(clean(item.expectedLocationId));
+    if (!ref) return;
+
+    orderedRefs.push(ref);
+    refsByKey.delete(refKey(ref));
+  });
+
+  return orderedRefs.concat(sortRows([...refsByKey.values()]));
+}
+
 function isAuthReady() {
   return Boolean(
     clean(els.apiBaseUrl.value)
@@ -4654,7 +4671,7 @@ async function loadSelectedSessionFromEverbridge() {
     return;
   }
 
-  const refsToLoad = sessionRefsToRefresh(session);
+  const refsToLoad = sessionRefsToRefreshInQueueOrder(session);
   if (refsToLoad.length && !isAuthReady()) {
     showScheduleRefreshAuthPrompt(session, true);
     return;
