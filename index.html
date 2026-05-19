@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Expected Location Importer</title>
+    <title>Expected Location Scheduler</title>
     <link rel="shortcut icon" href="images/favicon.png">
     <link rel="stylesheet" href="styles.css">
   </head>
@@ -23,7 +23,7 @@
           <div class="inner">
             <div id="site-title">
               <h1 id="project_title">Everbridge</h1>
-              <h2 id="project_tagline">Expected Location Importer</h2>
+              <h2 id="project_tagline">Expected Location Scheduler</h2>
             </div>
           </div>
         </div>
@@ -68,7 +68,6 @@
           <div class="panel-heading schedule-heading">
             <div class="queue-title">
               <h2 id="scheduleTitle">Schedule</h2>
-              <span class="count-badge" id="sessionMeta">No schedule selected</span>
             </div>
             <div class="schedule-controls">
               <label class="schedule-select-control">
@@ -82,18 +81,21 @@
               <button class="secondary compact-icon-control" type="button" id="newSession" aria-label="New Schedule" title="New Schedule">
                 <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
               </button>
+              <button class="secondary compact-icon-control" type="button" id="printSchedule" aria-label="Print Schedule" title="Print Schedule">
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M6 9V3h12v6"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><path d="M6 14h12v7H6z"></path></svg>
+              </button>
               <div class="action-menu">
                 <button class="secondary compact-icon-control" type="button" id="scheduleMoreToggle" aria-label="More Schedule Actions" title="More Schedule Actions" aria-haspopup="menu" aria-expanded="false" aria-controls="scheduleMoreMenu">
                   <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
                 </button>
                 <div class="action-menu-panel" id="scheduleMoreMenu" role="menu" hidden>
-                  <button type="button" id="importSession" role="menuitem">
-                    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
-                    <span>Import Schedule</span>
-                  </button>
                   <button type="button" id="exportSession" role="menuitem">
                     <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 21V9"></path><path d="m7 14 5-5 5 5"></path><path d="M5 3h14"></path></svg>
-                    <span>Export Schedule</span>
+                    <span>Export</span>
+                  </button>
+                  <button type="button" id="importSession" role="menuitem">
+                    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+                    <span>Import</span>
                   </button>
                   <button class="danger-menu-action" type="button" id="deleteSession" role="menuitem">
                     <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>
@@ -136,18 +138,71 @@
           </div>
 
           <p class="schedule-storage-note">
-            Saved schedules stay in this browser on this computer. Use Export/Import to hand off work; share files only with authorized team members.
+            <span class="message-with-icon">
+              <span class="message-icon"><svg class="fontawesome-icon" aria-hidden="true" focusable="false" viewBox="0 0 512 512"><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM216 336l24 0 0-64-24 0c-13.3 0-24-10.7-24-24s10.7-24 24-24l48 0c13.3 0 24 10.7 24 24l0 88 8 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-80 0c-13.3 0-24-10.7-24-24s10.7-24 24-24zm40-208a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"></path></svg></span>
+              <span>Saved schedules stay in this browser on this computer. Use Export/Import to hand off work; share files only with authorized team members.</span>
+            </span>
           </p>
+        </section>
+
+        <section class="print-report" aria-hidden="true">
+          <div class="print-report-header">
+            <div class="print-report-repeat-row">
+              <div class="print-report-repeat-cell">
+                <div class="print-report-header-content">
+                  <img class="print-report-logo" src="images/Everbridge-Logo-Color.svg" alt="Everbridge">
+                  <div>
+                    <p class="print-generated">Printed <span id="printGeneratedAt"></span></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="print-report-body">
+            <div class="print-report-repeat-row">
+              <div class="print-report-repeat-cell">
+                <h1 id="printScheduleName">No schedule selected</h1>
+                <p class="print-schedule-note is-empty" id="printScheduleNote"></p>
+                <section class="print-locations-section" aria-labelledby="printLocationsTitle">
+                  <div class="print-section-heading">
+                    <h2 id="printLocationsTitle">Scheduled Locations</h2>
+                    <span id="printRecordCount">0 Locations</span>
+                  </div>
+                  <table class="print-record-table">
+                    <thead>
+                      <tr>
+                        <th>No.</th>
+                        <th>Contact</th>
+                        <th>Timeframe</th>
+                        <th>Location</th>
+                      </tr>
+                    </thead>
+                    <tbody id="printRecords"></tbody>
+                  </table>
+                </section>
+              </div>
+            </div>
+          </div>
+          <div class="print-report-footer">
+            <div class="print-report-repeat-row">
+              <div class="print-report-repeat-cell">
+                <p class="print-report-footer-content">For authorized schedule coordination only.</p>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="panel locations-panel" aria-labelledby="locationsTitle">
           <div class="panel-heading">
             <div class="queue-title">
               <h2 id="locationsTitle">Expected Locations</h2>
-              <span class="count-badge" id="queueCount">0 Records</span>
+              <span class="count-badge" id="queueCount">0 Locations</span>
             </div>
             <div class="action-row">
-              <button class="secondary" type="button" id="loadCsv">Load CSV</button>
+              <button class="secondary" type="button" id="loadCsv">
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+                <span>Import Locations</span>
+              </button>
               <a class="button-link secondary compact-icon-link" id="downloadTemplate" href="#" download="Everbridge Expected Location Template.csv" aria-label="Download Everbridge Expected Location Template" title="Download Everbridge Expected Location Template">
                 <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M12 12v6"></path><path d="m9 15 3 3 3-3"></path></svg>
               </a>
@@ -166,7 +221,22 @@
             </div>
           </div>
 
-          <div class="import-status idle" id="importStatus" role="status" aria-live="polite">Add a row or load a CSV, then send reviewed rows to Everbridge.</div>
+          <div class="import-status idle" id="importStatus" role="status" aria-live="polite">
+            <span class="message-with-icon">
+              <span class="message-icon"><svg class="fontawesome-icon" aria-hidden="true" focusable="false" viewBox="0 0 512 512"><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM216 336l24 0 0-64-24 0c-13.3 0-24-10.7-24-24s10.7-24 24-24l48 0c13.3 0 24 10.7 24 24l0 88 8 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-80 0c-13.3 0-24-10.7-24-24s10.7-24 24-24zm40-208a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"></path></svg></span>
+              <span>Add a row or import locations, then send reviewed rows to Everbridge.</span>
+            </span>
+          </div>
+
+          <div class="timeline-overview" id="timelineOverview" hidden>
+            <div class="timeline-header">
+              <span class="timeline-title">Timeline</span>
+              <span class="timeline-range" id="timelineRange"></span>
+            </div>
+            <div class="timeline-scroll" aria-label="Expected Location timeline">
+              <div class="timeline-axis" id="timelineAxis"></div>
+            </div>
+          </div>
 
           <div class="table-wrap">
             <table>
@@ -175,8 +245,8 @@
                   <th class="select-col"><input class="row-select-checkbox" id="selectAllRows" type="checkbox" aria-label="Select all rows"></th>
                   <th class="narrow-col"></th>
                   <th class="contact-col" aria-sort="none">
-                    <button class="table-sort-button" type="button" id="sortContact" data-sort-field="contact" aria-label="Sort by Contact ID">
-                      <span>Contact ID</span>
+                    <button class="table-sort-button" type="button" id="sortContact" data-sort-field="contact" aria-label="Sort by Contact">
+                      <span>Contact</span>
                       <span class="sort-indicator" aria-hidden="true"></span>
                     </button>
                   </th>
@@ -186,15 +256,14 @@
                       <span class="sort-indicator" aria-hidden="true"></span>
                     </button>
                   </th>
-                  <th>Location</th>
-                  <th>Address</th>
+                  <th class="location-col">Location</th>
                   <th class="status-col">Status</th>
                   <th class="actions-col"></th>
                 </tr>
               </thead>
               <tbody id="queueBody">
                 <tr class="empty-row">
-                  <td colspan="8">No rows loaded</td>
+                  <td colspan="7">No rows loaded</td>
                 </tr>
               </tbody>
             </table>

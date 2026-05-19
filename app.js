@@ -152,18 +152,33 @@ const SESSION_STORAGE_VERSION = 2;
 const SCHEDULE_EXPORT_TYPE = "everbridge-expected-location-schedule";
 const SCHEDULE_IMPORT_MAX_BYTES = 2 * 1024 * 1024;
 const CONTACT_FIELD_KEYS = new Set(["contactIdType", "contactIdentifier"]);
-const LOCKED_CONTACT_MESSAGE = "This saved location is already assigned to its original contact. To assign it to another contact, remove this location and create a new one for the correct contact.";
+const LOCKED_CONTACT_MESSAGE = "This saved location is tied to its original contact in Everbridge. To use the same details for another contact, duplicate the row, enter the new Contact ID, and apply the new row.";
 const DEFAULT_QUEUE_SORT = Object.freeze({ field: "timeframe", direction: "asc" });
+
+function faIcon(viewBox, path) {
+  return `<svg class="fontawesome-icon" aria-hidden="true" focusable="false" viewBox="${viewBox}"><path d="${path}"></path></svg>`;
+}
 
 const ICONS = {
   check: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>',
   chevronDown: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></svg>',
   chevronRight: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></svg>',
+  clone: faIcon("0 0 512 512", "M288 448L64 448l0-224 64 0 0-64-64 0c-35.3 0-64 28.7-64 64L0 448c0 35.3 28.7 64 64 64l224 0c35.3 0 64-28.7 64-64l0-64-64 0 0 64zm-64-96l224 0c35.3 0 64-28.7 64-64l0-224c0-35.3-28.7-64-64-64L224 0c-35.3 0-64 28.7-64 64l0 224c0 35.3 28.7 64 64 64z"),
+  circleCheck: faIcon("0 0 512 512", "M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM369 209L241 337c-9.4 9.4-24.6 9.4-33.9 0l-64-64c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l47 47L335 175c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9z"),
+  circleExclamation: faIcon("0 0 512 512", "M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zm0-384c13.3 0 24 10.7 24 24l0 112c0 13.3-10.7 24-24 24s-24-10.7-24-24l0-112c0-13.3 10.7-24 24-24zM224 352a32 32 0 1 1 64 0 32 32 0 1 1 -64 0z"),
+  circleInfo: faIcon("0 0 512 512", "M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM216 336l24 0 0-64-24 0c-13.3 0-24-10.7-24-24s10.7-24 24-24l48 0c13.3 0 24 10.7 24 24l0 88 8 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-80 0c-13.3 0-24-10.7-24-24s10.7-24 24-24zm40-208a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"),
+  circleXmark: faIcon("0 0 512 512", "M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM175 175c9.4-9.4 24.6-9.4 33.9 0l47 47 47-47c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9l-47 47 47 47c9.4 9.4 9.4 24.6 0 33.9s-24.6 9.4-33.9 0l-47-47-47 47c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l47-47-47-47c-9.4-9.4-9.4-24.6 0-33.9z"),
   edit: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="m16.5 3.5 4 4L8 20H4v-4L16.5 3.5z"></path></svg>',
-  noteSticky: '<svg class="fontawesome-icon" aria-hidden="true" focusable="false" viewBox="0 0 448 512"><path d="M64 32C28.7 32 0 60.7 0 96L0 416c0 35.3 28.7 64 64 64l224 0 0-112c0-26.5 21.5-48 48-48l112 0 0-224c0-35.3-28.7-64-64-64L64 32zM448 352l-45.3 0L336 352c-8.8 0-16 7.2-16 16l0 66.7 0 45.3 32-32 64-64 32-32z"></path></svg>',
+  fileLines: faIcon("0 0 384 512", "M64 0C28.7 0 0 28.7 0 64L0 448c0 35.3 28.7 64 64 64l256 0c35.3 0 64-28.7 64-64l0-288-128 0c-17.7 0-32-14.3-32-32L224 0 64 0zM256 0l0 128 128 0L256 0zM112 256l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"),
+  lock: faIcon("0 0 448 512", "M144 144l0 48 160 0 0-48c0-44.2-35.8-80-80-80s-80 35.8-80 80zM80 192l0-48C80 64.5 144.5 0 224 0s144 64.5 144 144l0 48 16 0c35.3 0 64 28.7 64 64l0 192c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 256c0-35.3 28.7-64 64-64l16 0z"),
+  noteSticky: faIcon("0 0 448 512", "M64 32C28.7 32 0 60.7 0 96L0 416c0 35.3 28.7 64 64 64l224 0 0-112c0-26.5 21.5-48 48-48l112 0 0-224c0-35.3-28.7-64-64-64L64 32zM448 352l-45.3 0L336 352c-8.8 0-16 7.2-16 16l0 66.7 0 45.3 32-32 64-64 32-32z"),
+  penToSquare: faIcon("0 0 512 512", "M471.6 21.7c-21.9-21.9-57.3-21.9-79.2 0L362.3 51.7l97.9 97.9 30.1-30.1c21.9-21.9 21.9-57.3 0-79.2L471.6 21.7zm-299.2 220c-6.1 6.1-10.8 13.6-13.5 21.9l-29.6 88.8c-2.9 8.6-.6 18.1 5.8 24.6s15.9 8.7 24.6 5.8l88.8-29.6c8.2-2.7 15.7-7.4 21.9-13.5L437.7 172.3 339.7 74.3 172.4 241.7zM96 64C43 64 0 107 0 160L0 416c0 53 43 96 96 96l256 0c53 0 96-43 96-96l0-96c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 96c0 17.7-14.3 32-32 32L96 448c-17.7 0-32-14.3-32-32l0-256c0-17.7 14.3-32 32-32l96 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L96 64z"),
+  rotate: faIcon("0 0 512 512", "M142.9 142.9c-17.5 17.5-30.1 38-37.8 59.8c-5.9 16.7-24.2 25.4-40.8 19.5s-25.4-24.2-19.5-40.8C55.6 150.7 73.2 122 97.6 97.6c87.2-87.2 228.3-87.5 315.8-1L455 55c6.9-6.9 17.2-8.9 26.2-5.2s14.8 12.5 14.8 22.2l0 128c0 13.3-10.7 24-24 24l-8.4 0c0 0 0 0 0 0L344 224c-9.7 0-18.5-5.8-22.2-14.8s-1.7-19.3 5.2-26.2l41.1-41.1c-62.6-61.5-163.1-61.2-225.3 1zM16 312c0-13.3 10.7-24 24-24l7.6 0 .7 0L168 288c9.7 0 18.5 5.8 22.2 14.8s1.7 19.3-5.2 26.2l-41.1 41.1c62.6 61.5 163.1 61.2 225.3-1c17.5-17.5 30.1-38 37.8-59.8c5.9-16.7 24.2-25.4 40.8-19.5s25.4 24.2 19.5 40.8c-10.8 30.6-28.4 59.3-52.9 83.8c-87.2 87.2-228.3 87.5-315.8 1L57 457c-6.9 6.9-17.2 8.9-26.2 5.2S16 449.7 16 440l0-119.6 0-.7 0-7.6z"),
   trash: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>',
-  warning: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M10.3 4 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>',
+  triangleExclamation: faIcon("0 0 512 512", "M256 32c14.2 0 27.3 7.5 34.5 19.8l216 368c7.3 12.4 7.3 27.7 .2 40.1S486.3 480 472 480L40 480c-14.3 0-27.6-7.7-34.7-20.1s-7-27.8 .2-40.1l216-368C228.7 39.5 241.8 32 256 32zm0 128c-13.3 0-24 10.7-24 24l0 112c0 13.3 10.7 24 24 24s24-10.7 24-24l0-112c0-13.3-10.7-24-24-24zm32 224a32 32 0 1 0 -64 0 32 32 0 1 0 64 0z"),
 };
+
+ICONS.warning = ICONS.triangleExclamation;
 
 const COUNTRY_OPTIONS = [
   ["", "Select Country"],
@@ -487,6 +502,7 @@ const state = {
   isSending: false,
   isLoadingSession: false,
   pendingAuthRefreshSessionId: "",
+  timelineCenterSignature: "",
   toastTimer: null,
 };
 
@@ -514,6 +530,7 @@ const els = {
   sessionMeta: document.querySelector("#sessionMeta"),
   refreshSession: document.querySelector("#refreshSession"),
   newSession: document.querySelector("#newSession"),
+  printSchedule: document.querySelector("#printSchedule"),
   scheduleMoreToggle: document.querySelector("#scheduleMoreToggle"),
   scheduleMoreMenu: document.querySelector("#scheduleMoreMenu"),
   importSession: document.querySelector("#importSession"),
@@ -532,6 +549,14 @@ const els = {
   deleteSelected: document.querySelector("#deleteSelected"),
   sendImport: document.querySelector("#sendImport"),
   importStatus: document.querySelector("#importStatus"),
+  timelineOverview: document.querySelector("#timelineOverview"),
+  timelineRange: document.querySelector("#timelineRange"),
+  timelineAxis: document.querySelector("#timelineAxis"),
+  printScheduleName: document.querySelector("#printScheduleName"),
+  printGeneratedAt: document.querySelector("#printGeneratedAt"),
+  printRecordCount: document.querySelector("#printRecordCount"),
+  printScheduleNote: document.querySelector("#printScheduleNote"),
+  printRecords: document.querySelector("#printRecords"),
   toast: document.querySelector("#toast"),
 };
 
@@ -1090,16 +1115,50 @@ function rowTimeState(item) {
   return "";
 }
 
-function defaultWindow(timeZone = currentScheduleTimeZone()) {
-  const start = new Date();
-  start.setSeconds(0, 0);
+function localInputFromUtcDateParts(date) {
+  return `${date.getUTCFullYear()}-${padDatePart(date.getUTCMonth() + 1)}-${padDatePart(date.getUTCDate())}T${padDatePart(date.getUTCHours())}:${padDatePart(date.getUTCMinutes())}`;
+}
 
-  const end = new Date(start);
-  end.setHours(end.getHours() + 8);
+function addLocalMinutes(localInput, minutes) {
+  const parts = parseLocalDateTime(localInput);
+  if (!parts) return localInput;
+
+  const localDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0));
+  localDate.setUTCMinutes(localDate.getUTCMinutes() + minutes);
+  return localInputFromUtcDateParts(localDate);
+}
+
+function nextHalfHourLocalInput(timeZone = currentScheduleTimeZone(), date = new Date()) {
+  const parts = zonedDateParts(date, timeZone);
+  const minutesToAdd = parts.minute === 0 && parts.second === 0
+    ? 0
+    : parts.minute < 30
+      ? 30 - parts.minute
+      : parts.minute === 30 && parts.second === 0
+        ? 0
+        : 60 - parts.minute;
+
+  const localDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0));
+  localDate.setUTCMinutes(localDate.getUTCMinutes() + minutesToAdd);
+  return localInputFromUtcDateParts(localDate);
+}
+
+function defaultWindow(timeZone = currentScheduleTimeZone()) {
+  let startInput = nextHalfHourLocalInput(timeZone);
+  let startIso = toIsoFromLocal(startInput, timeZone);
+
+  for (let attempt = 0; attempt < 4 && !startIso; attempt += 1) {
+    startInput = addLocalMinutes(startInput, 30);
+    startIso = toIsoFromLocal(startInput, timeZone);
+  }
+
+  const endInput = startIso
+    ? toLocalInput(new Date(Date.parse(startIso) + 60 * 60 * 1000), timeZone)
+    : addLocalMinutes(startInput, 60);
 
   return {
-    arriveDate: toLocalInput(start, timeZone),
-    expireDate: toLocalInput(end, timeZone),
+    arriveDate: startInput,
+    expireDate: endInput,
   };
 }
 
@@ -1129,6 +1188,7 @@ function createItem(overrides = {}, useDefaults = true) {
     id: newId(),
     contactIdType: "externalId",
     contactIdentifier: "",
+    contactName: "",
     expectedLocationId: "",
     recreateFromLocationId: "",
     sourceContactIdType: "",
@@ -1305,6 +1365,7 @@ function serializeItem(item) {
     recreateFromLocationId: clean(item.recreateFromLocationId),
     contactIdType: item.contactIdType,
     contactIdentifier: clean(item.contactIdentifier),
+    contactName: clean(item.contactName),
     sourceContactIdType,
     sourceContactIdentifier,
     locationEntryMode: locationEntryMode(item),
@@ -1432,6 +1493,7 @@ function compactRowForStorage(row, includeContact = true, defaults = {}) {
     type: storageLocationType(mode),
     contactIDType: includeContact ? normalizeContactIdType(item.contactIdType) : "",
     contactID: includeContact ? clean(item.contactIdentifier) : "",
+    contactName: clean(item.contactName),
     arrive: clean(item.arriveDate),
     expire: clean(item.expireDate),
     tz: timeZone,
@@ -1470,6 +1532,7 @@ function expandCompactRow(row, defaults = {}) {
     recreateFromLocationId: clean(row.recreate),
     contactIdType: normalizeContactIdType(row.contactIDType ?? defaults.contactIdType),
     contactIdentifier: clean(row.contactID ?? defaults.contactIdentifier),
+    contactName: clean(row.contactName ?? defaults.contactName),
     locationEntryMode: locationTypeFromStorage(row.type),
     arriveDate: clean(row.arrive),
     expireDate: clean(row.expire),
@@ -1505,6 +1568,7 @@ function expandCompactLocationRef(ref, defaults = {}) {
   const locationId = clean(ref.id);
   const contactIdType = normalizeContactIdType(ref.contactIDType);
   const contactIdentifier = clean(ref.contactID);
+  const contactName = clean(ref.contactName);
   const timeZone = normalizeTimeZone(ref.tz, defaults.timeZone || currentScheduleTimeZone());
   if (!locationId || !contactIdentifier) return null;
 
@@ -1512,11 +1576,13 @@ function expandCompactLocationRef(ref, defaults = {}) {
     locationId,
     contactIdType,
     contactIdentifier,
+    contactName,
     timeZone,
     lastKnown: expandCompactRow(ref, {
       expectedLocationId: locationId,
       contactIdType,
       contactIdentifier,
+      contactName,
       timeZone,
     }),
   };
@@ -1630,8 +1696,8 @@ function validateCompactRowForImport(row, label, requireSavedLocationFields = fa
     return [`${label} is not a valid row object.`];
   }
 
-  if (requireSavedLocationFields && !clean(row.id)) errors.push(`${label} is missing a location ID.`);
-  if (requireSavedLocationFields && !clean(row.contactID)) errors.push(`${label} is missing a contact ID.`);
+  if (requireSavedLocationFields && !clean(row.id)) errors.push(`${label} requires a Location ID.`);
+  if (requireSavedLocationFields && !clean(row.contactID)) errors.push(`${label} requires a Contact ID.`);
 
   const contactIDType = clean(row.contactIDType);
   if (contactIDType && !["id", "externalId"].includes(contactIDType)) {
@@ -1660,7 +1726,7 @@ function validateQueueSortForImport(sort) {
   const parts = queueSortParts(sort);
   if (!parts) return "The schedule sort field must be a two-value array or object.";
   if (!["contact", "timeframe"].includes(parts.field)) {
-    return "The schedule sort field must be Contact ID or Timeframe.";
+    return "The schedule sort field must be Contact or Timeframe.";
   }
   if (!["asc", "ascending", "desc", "descending"].includes(parts.direction)) {
     return "The schedule sort direction must be asc or desc.";
@@ -1775,6 +1841,7 @@ function restoreLocationItemFromRef(ref) {
         expectedLocationId: ref.locationId,
         contactIdType: ref.contactIdType,
         contactIdentifier: ref.contactIdentifier,
+        contactName: clean(lastKnown.contactName || ref.contactName),
         timeZone: clean(lastKnown.timeZone) || timeZone,
         sourceContactIdType: ref.contactIdType,
         sourceContactIdentifier: ref.contactIdentifier,
@@ -1783,6 +1850,7 @@ function restoreLocationItemFromRef(ref) {
         expectedLocationId: ref.locationId,
         contactIdType: ref.contactIdType,
         contactIdentifier: ref.contactIdentifier,
+        contactName: clean(ref.contactName),
         timeZone,
         sourceContactIdType: ref.contactIdType,
         sourceContactIdentifier: ref.contactIdentifier,
@@ -1792,6 +1860,7 @@ function restoreLocationItemFromRef(ref) {
   item.expectedLocationId = clean(ref.locationId);
   item.contactIdType = ref.contactIdType;
   item.contactIdentifier = clean(ref.contactIdentifier);
+  item.contactName = clean(item.contactName || ref.contactName);
   item.sourceContactIdType = ref.contactIdType;
   item.sourceContactIdentifier = clean(ref.contactIdentifier);
   if (shouldRecreateLocation(item)) {
@@ -1831,6 +1900,7 @@ function normalizeLocationRef(ref, defaults = {}) {
   const locationId = clean(ref.locationId);
   const contactIdType = normalizeContactIdType(ref.contactIdType);
   const contactIdentifier = clean(ref.contactIdentifier);
+  const contactName = clean(ref.contactName ?? ref.lastKnown?.contactName);
   const timeZone = normalizeTimeZone(ref.timeZone || ref.lastKnown?.timeZone, defaults.timeZone || currentScheduleTimeZone());
 
   if (!locationId || !contactIdentifier) return null;
@@ -1841,6 +1911,7 @@ function normalizeLocationRef(ref, defaults = {}) {
     expectedLocationId: locationId,
     contactIdType,
     contactIdentifier,
+    contactName,
     timeZone: clean(lastKnown.timeZone) || timeZone,
     sourceContactIdType: contactIdType,
     sourceContactIdentifier: contactIdentifier,
@@ -1849,6 +1920,7 @@ function normalizeLocationRef(ref, defaults = {}) {
     lastKnownRow.expectedLocationId = clean(locationId);
     lastKnownRow.contactIdType = contactIdType;
     lastKnownRow.contactIdentifier = contactIdentifier;
+    lastKnownRow.contactName = clean(lastKnownRow.contactName || contactName);
     lastKnownRow.timeZone = itemTimeZone(lastKnownRow);
     lastKnownRow.sourceContactIdType = contactIdType;
     lastKnownRow.sourceContactIdentifier = contactIdentifier;
@@ -1858,6 +1930,7 @@ function normalizeLocationRef(ref, defaults = {}) {
     locationId,
     contactIdType,
     contactIdentifier,
+    contactName: clean(contactName || lastKnownRow?.contactName),
     timeZone,
     lastKnown: lastKnownRow ? serializeItem(lastKnownRow) : null,
   };
@@ -2081,23 +2154,28 @@ function createSession(name = defaultSessionName(), description = "") {
   return session;
 }
 
-function sessionSummary(session) {
-  if (!session) return "No schedule selected";
+function scheduleRecordSummary(session) {
+  if (!session) return "";
 
-  const activeRefs = session.locationRefs?.length ?? 0;
-  const pendingUpdates = (session.locationRefs ?? []).filter(pendingLocalItemFromRef).length;
-  const draftRows = (session.draftRows?.length ?? 0) + pendingUpdates;
-  const pendingDeletes = session.pendingDeleteRefs?.length ?? state.pendingDeletes.length;
+  const pendingDeleteKeys = new Set((session.pendingDeleteRefs ?? []).map(refKey));
+  const activeRefs = (session.locationRefs ?? []).filter((ref) => !pendingDeleteKeys.has(refKey(ref)));
+  const recordCount = activeRefs.length;
+  const pendingUpdates = activeRefs.filter(pendingLocalItemFromRef).length;
+  const draftCount = (session.draftRows?.length ?? 0) + pendingUpdates;
+  const pendingDeletes = session.pendingDeleteRefs?.length ?? 0;
   const parts = [
-    `${activeRefs} Location${activeRefs === 1 ? "" : "s"}`,
-    `${draftRows} Draft${draftRows === 1 ? "" : "s"}`,
+    `${recordCount} Location${recordCount === 1 ? "" : "s"}`,
   ];
+  if (draftCount) parts.push(`${draftCount} Draft${draftCount === 1 ? "" : "s"}`);
   if (pendingDeletes) parts.push(`${pendingDeletes} Pending Delete${pendingDeletes === 1 ? "" : "s"}`);
   return parts.join(" · ");
 }
 
 function scheduleSelectLabel(session) {
-  return session ? `${session.name} (${sessionSummary(session)})` : "No schedule selected";
+  if (!session) return "No schedule selected";
+
+  const summary = scheduleRecordSummary(session);
+  return summary ? `${session.name} (${summary})` : session.name;
 }
 
 function renderScheduleSelectOptions() {
@@ -2109,6 +2187,97 @@ function renderScheduleSelectOptions() {
   }));
 
   els.sessionSelectOptions.innerHTML = options.join("");
+}
+
+function printGeneratedAtLabel() {
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date());
+}
+
+function uploadStatusLabel(statusState) {
+  const labels = {
+    pending: "Draft",
+    refreshing: "Checking",
+    refreshed: "Refreshed",
+    sending: "Applying Changes",
+    success: "Created",
+    updated: "Updated",
+    warn: "Needs Review",
+    error: "Failed",
+  };
+  return labels[statusState] ?? "Status";
+}
+
+function printRecordHtml(item, index) {
+  const contactTitle = clean(item.contactIdentifier) || "Add Contact ID";
+  const contactName = clean(item.contactName);
+  const contactLabel = contactIdTypeLabel(item.contactIdType);
+  const contactDetail = isIncompleteSummaryText(contactTitle)
+    ? contactTitle
+    : `${contactLabel}: ${contactTitle}`;
+  const startTitle = formatDateForTable(item.arriveDate, itemTimeZone(item)) || "Add Start Time";
+  const endTitle = formatDateForTable(item.expireDate, itemTimeZone(item)) || "Add End Time";
+  const location = locationDisplaySummary(item);
+  const note = clean(item.note);
+  const errors = validateItem(item);
+  const reviewHtml = errors.length
+    ? `<p class="print-record-warning">${errors.map(escapeHtml).join(" ")}</p>`
+    : "";
+  const noteHtml = note
+    ? `<tr class="print-note-row"><td class="print-note-icon-cell"><span class="print-note-icon">${ICONS.noteSticky}</span></td><td class="print-note-text-cell" colspan="3"><span class="print-note-text">${escapeHtml(note)}</span></td></tr>`
+    : "";
+
+  return `
+    <tr class="${[errors.length ? "has-review" : "", note ? "has-note" : ""].filter(Boolean).join(" ")}">
+      <td>
+        <span class="print-record-number">${String(index + 1).padStart(2, "0")}</span>
+      </td>
+      <td>
+        <strong>${escapeHtml(contactName || contactDetail)}</strong>
+        ${contactName ? `<span>${escapeHtml(contactDetail)}</span>` : ""}
+      </td>
+      <td>
+        <strong class="print-time-value">${escapeHtml(startTitle)}</strong>
+        <strong class="print-time-value">${escapeHtml(endTitle)}</strong>
+      </td>
+      <td>
+        <strong>${escapeHtml(location.title)}</strong>
+        <span>${escapeHtml(location.detail)}</span>
+        ${reviewHtml}
+      </td>
+    </tr>
+    ${noteHtml}
+  `;
+}
+
+function renderPrintReport() {
+  if (!els.printScheduleName) return;
+
+  const session = currentSession();
+  const note = clean(session?.description);
+  const recordCount = state.queue.length;
+  els.printScheduleName.textContent = clean(session?.name) || "No schedule selected";
+  els.printGeneratedAt.textContent = printGeneratedAtLabel();
+  els.printRecordCount.textContent = `${recordCount} Location${recordCount === 1 ? "" : "s"}`;
+  els.printScheduleNote?.classList.toggle("is-empty", !note);
+  if (els.printScheduleNote) els.printScheduleNote.textContent = note;
+  if (els.printRecords) {
+    els.printRecords.innerHTML = state.queue.length
+      ? state.queue.map(printRecordHtml).join("")
+      : '<tr><td colspan="4" class="print-empty-report">No Expected Location records.</td></tr>';
+  }
+}
+
+function printCurrentSchedule() {
+  autoSaveActiveSession();
+  renderPrintReport();
+  window.print();
 }
 
 function renderSessionControls() {
@@ -2124,7 +2293,7 @@ function renderSessionControls() {
   els.sessionTimeZone.value = session?.timeZone ?? browserTimeZone();
   els.sessionTimeZone.classList.toggle("invalid", Boolean(session) && !isValidTimeZone(els.sessionTimeZone.value));
   renderScheduleTimeZoneOptions(els.sessionTimeZone.value);
-  els.sessionMeta.textContent = sessionSummary(session);
+  if (els.sessionMeta) els.sessionMeta.textContent = "";
 
   const disabled = state.isSending || state.isLoadingSession;
   if (!session) state.editingScheduleNote = false;
@@ -2149,6 +2318,8 @@ function renderSessionControls() {
   els.importSession.disabled = disabled;
   els.deleteSession.disabled = !session || disabled;
   els.newSession.disabled = disabled;
+  els.printSchedule.disabled = disabled || (!session && !state.queue.length);
+  renderPrintReport();
 }
 
 function saveActiveSessionFromQueue() {
@@ -2393,7 +2564,7 @@ async function selectScheduleOption(option) {
     await loadSelectedSessionFromEverbridge();
   } else {
     state.pendingAuthRefreshSessionId = "";
-    setImportStatus("No schedule selected. Add a row or load a CSV, then send reviewed rows to Everbridge.", "idle");
+    setImportStatus("No schedule selected. Add a row or import locations, then send reviewed rows to Everbridge.", "idle");
   }
 }
 
@@ -2444,6 +2615,16 @@ function contactExpectedLocationsUrl(refOrItem) {
   return `${base}/expectedLocations/${orgId}/${encodeURIComponent(contactIdentifier)}?${params.toString()}`;
 }
 
+function contactItemUrl(refOrItem, idTypeParam = "idType") {
+  const base = normalizedRestBaseUrl();
+  const orgId = encodeURIComponent(clean(els.organizationId.value));
+  const contactIdType = refOrItem.contactIdType || refOrItem.sourceContactIdType || "id";
+  const contactIdentifier = clean(refOrItem.contactIdentifier || refOrItem.sourceContactIdentifier);
+  const params = new URLSearchParams({ [idTypeParam]: contactIdType });
+
+  return `${base}/contacts/${orgId}/${encodeURIComponent(contactIdentifier)}?${params.toString()}`;
+}
+
 function deleteBatchUrl() {
   const base = normalizedRestBaseUrl();
   const orgId = encodeURIComponent(clean(els.organizationId.value));
@@ -2474,7 +2655,7 @@ function refreshEndpointPreview() {
 
 function setToast(message, type = "") {
   window.clearTimeout(state.toastTimer);
-  els.toast.textContent = message;
+  els.toast.innerHTML = messageLine(messageIconForType(type), message);
   els.toast.className = `toast visible ${type}`.trim();
   state.toastTimer = window.setTimeout(() => {
     els.toast.className = "toast";
@@ -2482,7 +2663,7 @@ function setToast(message, type = "") {
 }
 
 function setImportStatus(message, type = "idle") {
-  els.importStatus.textContent = message;
+  els.importStatus.innerHTML = messageLine(messageIconForType(type), message);
   els.importStatus.className = `import-status ${type}`;
 }
 
@@ -2562,7 +2743,7 @@ function locationSummary(item) {
   }
 
   return {
-    title: clean(item.locationName) || "Missing location",
+    title: clean(item.locationName) || "Add Location Name",
   };
 }
 
@@ -2570,14 +2751,14 @@ function addressLookupSummary(item) {
   const mode = locationEntryMode(item);
   if (mode === "assetExternalId") {
     return {
-      title: clean(item.assetExternalId) || "Missing Asset External ID",
+      title: clean(item.assetExternalId) || "Add Asset External ID",
       subtitle: "",
     };
   }
 
   if (mode === "iata") {
     return {
-      title: clean(item.iata).toUpperCase() || "Missing IATA",
+      title: clean(item.iata).toUpperCase() || "Add IATA",
       subtitle: "",
     };
   }
@@ -2589,27 +2770,92 @@ function addressLookupSummary(item) {
 
   if (streetAddress || addressParts.length) {
     return {
-      title: streetAddress || "Missing street address",
+      title: streetAddress || "Add Street Address",
       subtitle: addressParts.join(", "),
     };
   }
 
   return {
-    title: "Missing Address",
+    title: "Add Address",
     subtitle: "",
   };
 }
 
-function isMissingSummaryText(value) {
-  return clean(value).toLowerCase().startsWith("missing ");
+function locationDisplaySummary(item) {
+  const mode = locationEntryMode(item);
+  const lookup = addressLookupSummary(item);
+
+  if (mode === "assetExternalId") {
+    return {
+      title: "Asset ID",
+      detail: lookup.title,
+    };
+  }
+
+  if (mode === "iata") {
+    return {
+      title: "IATA",
+      detail: lookup.title,
+    };
+  }
+
+  const addressText = lookup.subtitle
+    ? `${lookup.title}, ${lookup.subtitle}`
+    : lookup.title;
+
+  return {
+    title: clean(item.locationName) || "Add Location Name",
+    detail: addressText,
+  };
+}
+
+function isIncompleteSummaryText(value) {
+  const text = clean(value).toLowerCase();
+  return text.startsWith("add ") || text.startsWith("missing ");
 }
 
 function rowTitleClass(value) {
-  return `row-title${isMissingSummaryText(value) ? " data-error-text" : ""}`;
+  return `row-title${isIncompleteSummaryText(value) ? " data-error-text" : ""}`;
+}
+
+function rowSubtitleClass(value) {
+  return `row-subtitle${isIncompleteSummaryText(value) ? " data-error-text" : ""}`;
 }
 
 function noteLabelContent() {
   return `${ICONS.noteSticky}<span class="visually-hidden">Note</span>`;
+}
+
+function messageLine(icon, message) {
+  return `
+    <span class="message-with-icon">
+      <span class="message-icon">${icon}</span>
+      <span>${escapeHtml(message)}</span>
+    </span>
+  `;
+}
+
+function messageIconForType(type) {
+  if (type === "success") return ICONS.circleCheck;
+  if (type === "warn") return ICONS.triangleExclamation;
+  if (type === "error") return ICONS.circleXmark;
+  if (type === "sending") return ICONS.rotate;
+  return ICONS.circleInfo;
+}
+
+function statusIconForState(status) {
+  const icons = {
+    pending: ICONS.fileLines,
+    refreshing: ICONS.rotate,
+    refreshed: ICONS.rotate,
+    sending: ICONS.rotate,
+    success: ICONS.circleCheck,
+    updated: ICONS.penToSquare,
+    warn: ICONS.triangleExclamation,
+    error: ICONS.circleXmark,
+  };
+
+  return icons[status] ?? ICONS.circleInfo;
 }
 
 function contactIdPayloadValue(value) {
@@ -2688,6 +2934,10 @@ function applyInputValueToItem(input, item) {
   item[fieldKey] = normalizedInputValue(input, item);
 
   if (fieldKey === "note") return;
+
+  if (isContactFieldKey(fieldKey)) {
+    item.contactName = "";
+  }
 
   if (!clean(item.expectedLocationId) && isContactFieldKey(fieldKey)) {
     item.sourceContactIdType = "";
@@ -3182,7 +3432,15 @@ function refreshQueueActions() {
     state.editingNoteOriginal = "";
   }
   const selectedCount = state.selectedRowIds.size;
-  els.queueCount.textContent = `${state.queue.length} Record${state.queue.length === 1 ? "" : "s"}${selectedCount ? ` · ${selectedCount} Selected` : ""}${pendingDeleteCount ? ` · ${pendingDeleteCount} Delete${pendingDeleteCount === 1 ? "" : "s"}` : ""}`;
+  const recordCount = state.queue.filter((item) => clean(item.expectedLocationId)).length;
+  const draftCount = state.queue.filter((item) => !clean(item.expectedLocationId) || isItemDirty(item)).length;
+  const countParts = [
+    `${recordCount} Location${recordCount === 1 ? "" : "s"}`,
+  ];
+  if (draftCount) countParts.push(`${draftCount} Draft${draftCount === 1 ? "" : "s"}`);
+  if (selectedCount) countParts.push(`${selectedCount} Selected`);
+  if (pendingDeleteCount) countParts.push(`${pendingDeleteCount} Delete${pendingDeleteCount === 1 ? "" : "s"}`);
+  els.queueCount.textContent = countParts.join(" · ");
   els.sendImport.textContent = state.queue.some((item) => clean(item.expectedLocationId)) || pendingDeleteCount
     ? "Apply Changes"
     : "Send to Everbridge";
@@ -3199,7 +3457,7 @@ function renderSortControls() {
 
     const active = state.queueSort.field === field;
     const direction = active ? state.queueSort.direction : "";
-    const label = field === "contact" ? "Contact ID" : "Timeframe";
+    const label = field === "contact" ? "Contact" : "Timeframe";
     const indicator = button.querySelector(".sort-indicator");
     const th = button.closest("th");
     button.classList.toggle("active", active);
@@ -3281,26 +3539,272 @@ function finishInlineNoteEdit(save = true) {
   renderQueue();
 }
 
+function duplicateQueueItem(sourceItem) {
+  const duplicate = createItem({
+    ...serializeItem(sourceItem),
+    id: newId(),
+    expectedLocationId: "",
+    recreateFromLocationId: "",
+    contactIdentifier: "",
+    contactName: "",
+    sourceContactIdType: "",
+    sourceContactIdentifier: "",
+    syncedFingerprint: "",
+    uploadStatus: {
+      state: "pending",
+      message: "Duplicated, enter contact",
+    },
+  }, false);
+
+  state.queue.push(duplicate);
+  state.selectedRowIds.delete(duplicate.id);
+  state.expandedId = duplicate.id;
+  state.lockedContactNoticeId = null;
+  autoSaveActiveSession("Created from duplicated row.");
+  renderQueue();
+  setImportStatus("Duplicated row. Enter the new contact before applying changes.", "idle");
+}
+
+function dateKeyFromMs(time, timeZone) {
+  const parts = zonedDateParts(new Date(time), timeZone);
+  return `${parts.year}-${padDatePart(parts.month)}-${padDatePart(parts.day)}`;
+}
+
+function addDaysToDateKey(dateKey, days = 1) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return `${date.getUTCFullYear()}-${padDatePart(date.getUTCMonth() + 1)}-${padDatePart(date.getUTCDate())}`;
+}
+
+function dateKeyStartMs(dateKey, timeZone) {
+  const iso = toIsoFromLocal(`${dateKey}T00:00`, timeZone);
+  const time = iso ? Date.parse(iso) : NaN;
+  return Number.isFinite(time) ? time : NaN;
+}
+
+function timelineDateLabel(time, timeZone) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    timeZone: normalizeTimeZone(timeZone),
+  }).format(new Date(time));
+}
+
+function timelineRangeLabel(rangeStart, rangeEnd, timeZone) {
+  const start = timelineDateLabel(rangeStart, timeZone);
+  const end = timelineDateLabel(Math.max(rangeStart, rangeEnd - 1), timeZone);
+  return start === end ? start : `${start} - ${end}`;
+}
+
+function timelineEntryForItem(item) {
+  const timeZone = itemTimeZone(item);
+  const start = sortTimeValue(item.arriveDate, timeZone);
+  const end = sortTimeValue(item.expireDate, timeZone);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+
+  const contact = clean(item.contactName) || clean(item.contactIdentifier) || "Add Contact ID";
+  const location = ["assetExternalId", "iata"].includes(locationEntryMode(item))
+    ? addressLookupSummary(item).title
+    : locationSummary(item).title;
+  return {
+    item,
+    start,
+    end,
+    label: `${contact} · ${location}`,
+    timeZone,
+    timeState: rowTimeState(item),
+    hasErrors: validateItem(item).length > 0,
+    lane: 0,
+  };
+}
+
+function assignTimelineLanes(entries) {
+  const laneEnds = [];
+  entries
+    .sort((a, b) => a.start - b.start || a.end - b.end)
+    .forEach((entry) => {
+      let lane = laneEnds.findIndex((end) => end <= entry.start);
+      if (lane < 0) lane = laneEnds.length;
+
+      entry.lane = lane;
+      laneEnds[lane] = Math.max(laneEnds[lane] ?? 0, entry.end);
+    });
+
+  return Math.max(1, laneEnds.length);
+}
+
+function timelinePercent(time, rangeStart, rangeEnd) {
+  const span = Math.max(1, rangeEnd - rangeStart);
+  return ((time - rangeStart) / span) * 100;
+}
+
+function buildTimelineDays(startKey, endKey, timeZone) {
+  const days = [];
+  let key = startKey;
+  for (let guard = 0; guard < 120 && key !== endKey; guard += 1) {
+    const start = dateKeyStartMs(key, timeZone);
+    const nextKey = addDaysToDateKey(key);
+    const end = dateKeyStartMs(nextKey, timeZone);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      days.push({ key, start, end });
+    }
+    key = nextKey;
+  }
+  return days;
+}
+
+function centerTimelineOnNow(nowPercent, signature) {
+  if (state.timelineCenterSignature === signature) return;
+
+  state.timelineCenterSignature = signature;
+  requestAnimationFrame(() => {
+    const scroller = els.timelineAxis?.parentElement;
+    if (!scroller || !els.timelineAxis) return;
+
+    const targetLeft = (els.timelineAxis.scrollWidth * (nowPercent / 100)) - (scroller.clientWidth / 2);
+    const maxLeft = Math.max(0, els.timelineAxis.scrollWidth - scroller.clientWidth);
+    scroller.scrollLeft = Math.max(0, Math.min(maxLeft, targetLeft));
+  });
+}
+
+function renderTimeline() {
+  if (!els.timelineOverview || !els.timelineAxis || !els.timelineRange) return;
+
+  const entries = state.queue
+    .map(timelineEntryForItem)
+    .filter(Boolean);
+
+  if (!entries.length) {
+    els.timelineOverview.hidden = true;
+    els.timelineRange.textContent = "";
+    els.timelineAxis.innerHTML = "";
+    state.timelineCenterSignature = "";
+    return;
+  }
+
+  const axisTimeZone = currentScheduleTimeZone();
+  const minStart = Math.min(...entries.map((entry) => entry.start));
+  const maxEnd = Math.max(...entries.map((entry) => entry.end));
+  const startKey = dateKeyFromMs(minStart, axisTimeZone);
+  const endKey = addDaysToDateKey(dateKeyFromMs(maxEnd, axisTimeZone));
+  const days = buildTimelineDays(startKey, endKey, axisTimeZone);
+  const fallbackPadding = 60 * 60 * 1000;
+  const rangeStart = days[0]?.start ?? minStart - fallbackPadding;
+  const lastDay = days[days.length - 1];
+  const rangeEnd = lastDay?.end ?? maxEnd + fallbackPadding;
+  const laneCount = assignTimelineLanes(entries);
+  const timelineWidth = Math.max(560, days.length * 112);
+  const minHeight = 28 + laneCount * 20;
+
+  const dayHtml = days.map((day) => {
+    const left = Math.max(0, timelinePercent(day.start, rangeStart, rangeEnd));
+    const width = Math.max(0, timelinePercent(day.end, rangeStart, rangeEnd) - left);
+    return `
+      <div class="timeline-day" style="left: ${left}%; width: ${width}%;">
+        <span class="timeline-day-label">${escapeHtml(timelineDateLabel(day.start, axisTimeZone))}</span>
+      </div>
+    `;
+  }).join("");
+
+  const now = Date.now();
+  const nowPercent = timelinePercent(now, rangeStart, rangeEnd);
+  const nowHtml = now >= rangeStart && now <= rangeEnd
+    ? `<div class="timeline-now" style="left: ${nowPercent}%;"><span>Now</span></div>`
+    : "";
+
+  const segmentHtml = entries.map((entry) => {
+    const left = Math.max(0, Math.min(100, timelinePercent(entry.start, rangeStart, rangeEnd)));
+    const right = Math.max(left, Math.min(100, timelinePercent(entry.end, rangeStart, rangeEnd)));
+    const width = Math.max(0.7, right - left);
+    const top = 24 + entry.lane * 20;
+    const start = formatDateForTable(entry.item.arriveDate, entry.timeZone) || "Add Start Time";
+    const end = formatDateForTable(entry.item.expireDate, entry.timeZone) || "Add End Time";
+    const classes = [
+      "timeline-segment",
+      entry.timeState ? `${entry.timeState}-event` : "future-event",
+      entry.hasErrors ? "invalid" : "",
+    ].filter(Boolean).join(" ");
+    const label = `${entry.label}, ${start} to ${end}`;
+    return `
+      <button class="${classes}" type="button" data-timeline-row="${escapeAttr(entry.item.id)}" style="left: ${left}%; width: ${width}%; top: ${top}px;" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">
+        <span class="timeline-segment-label">${escapeHtml(entry.label)}</span>
+      </button>
+    `;
+  }).join("");
+
+  els.timelineRange.textContent = timelineRangeLabel(rangeStart, rangeEnd, axisTimeZone);
+  els.timelineAxis.style.width = `${timelineWidth}px`;
+  els.timelineAxis.style.minWidth = `${timelineWidth}px`;
+  els.timelineAxis.style.minHeight = `${minHeight}px`;
+  els.timelineAxis.innerHTML = `${dayHtml}${nowHtml}${segmentHtml}`;
+  els.timelineOverview.hidden = false;
+
+  if (now >= rangeStart && now <= rangeEnd) {
+    centerTimelineOnNow(nowPercent, `${state.activeSessionId}:${rangeStart}:${rangeEnd}`);
+  } else {
+    state.timelineCenterSignature = "";
+  }
+}
+
+function focusTimelineRow(itemId) {
+  const id = clean(itemId);
+  if (!id || !state.queue.some((item) => item.id === id)) return;
+
+  if (state.editingNoteId) finishInlineNoteEdit(true);
+  state.expandedId = id;
+  state.lockedContactNoticeId = null;
+  renderQueue();
+
+  requestAnimationFrame(() => {
+    const target = [...els.queueBody.querySelectorAll("[data-row-select]")]
+      .find((input) => input.dataset.rowSelect === id);
+    target?.closest("tr")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+
+function toggleQueueRow(itemId) {
+  const id = clean(itemId);
+  if (!id || !state.queue.some((item) => item.id === id)) return;
+
+  if (state.editingNoteId) finishInlineNoteEdit(true);
+  state.expandedId = state.expandedId === id ? null : id;
+  state.lockedContactNoticeId = null;
+  renderQueue();
+}
+
+function rowClickToggleId(event) {
+  const summaryRow = event.target.closest("tr.summary-row");
+  if (!summaryRow || !els.queueBody.contains(summaryRow)) return "";
+
+  const interactive = event.target.closest("button, a, input, select, textarea, label, [contenteditable='true'], [role='button']");
+  return interactive ? "" : summaryRow.dataset.rowId;
+}
+
 function renderQueue() {
   sortQueue();
   refreshQueueActions();
   renderSortControls();
   refreshEndpointPreview();
   renderSessionControls();
+  renderTimeline();
 
   if (!state.queue.length) {
-    els.queueBody.innerHTML = '<tr class="empty-row"><td colspan="8">No rows loaded</td></tr>';
+    els.queueBody.innerHTML = '<tr class="empty-row"><td colspan="7">No rows loaded</td></tr>';
     return;
   }
 
   els.queueBody.innerHTML = "";
   state.queue.forEach((item, index) => {
     const errors = validateItem(item);
-    const location = locationSummary(item);
-    const addressLookup = addressLookupSummary(item);
-    const contactTitle = clean(item.contactIdentifier) || "Missing contact";
-    const startTitle = formatDateForTable(item.arriveDate, itemTimeZone(item)) || "Missing Start Time";
-    const endTitle = formatDateForTable(item.expireDate, itemTimeZone(item)) || "Missing End Time";
+    const location = locationDisplaySummary(item);
+    const contactTitle = clean(item.contactIdentifier) || "Add Contact ID";
+    const contactName = clean(item.contactName);
+    const contactLabel = contactIdTypeLabel(item.contactIdType);
+    const contactDetail = isIncompleteSummaryText(contactTitle)
+      ? contactTitle
+      : `${contactLabel}: ${contactTitle}`;
+    const startTitle = formatDateForTable(item.arriveDate, itemTimeZone(item)) || "Add Start Time";
+    const endTitle = formatDateForTable(item.expireDate, itemTimeZone(item)) || "Add End Time";
     const note = clean(item.note);
     const editingNote = state.editingNoteId === item.id;
     const timeState = rowTimeState(item);
@@ -3313,26 +3817,33 @@ function renderQueue() {
       : "";
     const row = document.createElement("tr");
     row.className = `summary-row ${timeStateClass} ${selected ? "selected" : ""} ${expanded ? "expanded" : ""} ${errors.length ? "invalid" : ""} ${note || editingNote ? "has-note" : ""}`.trim();
+    row.dataset.rowId = item.id;
     row.innerHTML = `
       <td class="select-cell"><input class="row-select-checkbox" type="checkbox" data-row-select="${escapeAttr(item.id)}" aria-label="Select row ${index + 1}"${selected ? " checked" : ""}${disabled}></td>
       <td class="expand-cell"><button class="icon-button expand-button" type="button" data-toggle="${item.id}" aria-label="${expanded ? "Collapse" : "Expand"} row ${index + 1}" title="${expanded ? "Collapse" : "Expand"}"${disabled}>${expanded ? ICONS.chevronDown : ICONS.chevronRight}</button></td>
       <td class="contact-cell">
-        <span class="${rowTitleClass(contactTitle)}">${escapeHtml(contactTitle)}</span>
-        <span class="row-subtitle">${contactIdTypeLabel(item.contactIdType)}</span>
+        <div class="summary-cell-lines">
+          ${contactName
+            ? `<span class="row-title contact-name" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</span><span class="${rowTitleClass(contactTitle)}" title="${escapeAttr(contactDetail)}">${escapeHtml(contactDetail)}</span>`
+            : `<span class="${rowTitleClass(contactTitle)}" title="${escapeAttr(contactDetail)}">${escapeHtml(contactDetail)}</span>`}
+        </div>
       </td>
       <td class="timeframe-cell">
-        <span class="${rowTitleClass(startTitle)}">${escapeHtml(startTitle)}</span>
-        <span class="${rowTitleClass(endTitle)}">${escapeHtml(endTitle)}</span>
+        <div class="summary-cell-lines">
+          <span class="${rowTitleClass(startTitle)} timeframe-start" title="${escapeAttr(startTitle)}">${escapeHtml(startTitle)}</span>
+          <span class="${rowTitleClass(endTitle)} timeframe-end" title="${escapeAttr(endTitle)}">${escapeHtml(endTitle)}</span>
+        </div>
       </td>
-      <td>
-        <span class="${rowTitleClass(location.title)}">${escapeHtml(location.title)}</span>
-      </td>
-      <td>
-        <span class="${rowTitleClass(addressLookup.title)}">${escapeHtml(addressLookup.title)}</span>
-        ${addressLookup.subtitle ? `<span class="row-subtitle">${escapeHtml(addressLookup.subtitle)}</span>` : ""}
+      <td class="location-cell">
+        <div class="summary-cell-lines">
+          <span class="${rowTitleClass(location.title)}">${escapeHtml(location.title)}</span>
+          <span class="${rowSubtitleClass(location.detail)}">${escapeHtml(location.detail)}</span>
+        </div>
       </td>
       <td class="status-cell">
-        ${renderUploadStatus(item)}
+        <div class="summary-cell-lines status-lines">
+          ${renderUploadStatus(item)}
+        </div>
       </td>
       <td class="actions-cell">
         <div class="row-actions">
@@ -3340,6 +3851,7 @@ function renderQueue() {
             ${errors.length ? `<span class="row-issue-indicator" role="img" aria-label="${escapeAttr(issueSummary)}" title="${escapeAttr(issueSummary)}">${ICONS.warning}</span>` : ""}
             <button class="icon-button row-action-button" type="button" data-toggle="${item.id}" aria-label="${expanded ? "Done Editing Row" : "Edit Row"}" title="${expanded ? "Done" : "Edit"}"${disabled}>${expanded ? ICONS.check : ICONS.edit}</button>
           </span>
+          <button class="icon-button row-action-button" type="button" data-duplicate="${item.id}" aria-label="Duplicate Row" title="Duplicate"${disabled}>${ICONS.clone}</button>
           <button class="icon-button row-action-button danger" type="button" data-remove="${item.id}" aria-label="Remove Row" title="${clean(item.expectedLocationId) ? "Delete" : "Remove"}"${disabled}>${ICONS.trash}</button>
         </div>
       </td>
@@ -3350,7 +3862,7 @@ function renderQueue() {
       const noteRow = document.createElement("tr");
       noteRow.className = `summary-note-row ${timeStateClass} ${selected ? "selected" : ""} ${expanded ? "expanded" : ""} ${errors.length ? "invalid" : ""}`.trim();
       noteRow.innerHTML = `
-        <td colspan="8">
+        <td colspan="7">
           ${editingNote
             ? `<div class="row-note row-note-editor">
                 <label class="row-note-label" for="${escapeAttr(`${item.id}-inline-note`)}">${noteLabelContent()}</label>
@@ -3371,7 +3883,7 @@ function renderQueue() {
     if (expanded) {
       const detail = document.createElement("tr");
       detail.className = `detail-row ${timeStateClass}`.trim();
-      detail.innerHTML = `<td colspan="8">${renderEditor(item, errors)}</td>`;
+      detail.innerHTML = `<td colspan="7">${renderEditor(item, errors)}</td>`;
       els.queueBody.append(detail);
     }
   });
@@ -3379,34 +3891,30 @@ function renderQueue() {
 
 function renderUploadStatus(item) {
   const status = item.uploadStatus ?? { state: "pending", message: "Not sent" };
-  const labels = {
-    pending: "Draft",
-    refreshing: "Checking",
-    refreshed: "Refreshed",
-    sending: "Applying Changes",
-    success: "Created",
-    updated: "Updated",
-    warn: "Needs Review",
-    error: "Failed",
-  };
+  const statusMessage = status.message || "";
   return `
-    <span class="status-badge ${escapeAttr(status.state)}">${labels[status.state] ?? "Status"}</span>
-    <span class="row-subtitle">${escapeHtml(status.message || "")}</span>
+    <span class="status-badge ${escapeAttr(status.state)}">${statusIconForState(status.state)}<span>${uploadStatusLabel(status.state)}</span></span>
+    <span class="row-subtitle status-detail" title="${escapeAttr(statusMessage)}">${escapeHtml(statusMessage)}</span>
   `;
 }
 
 function renderEditor(item, errors) {
-  const errorHtml = errors.map((error) => `<div>${escapeHtml(error)}</div>`).join("");
+  const errorHtml = errors.map((error) => messageLine(ICONS.circleExclamation, error)).join("");
+  const statusMessage = clean(item.uploadStatus?.message);
+  const statusWarning = statusMessage && item.uploadStatus?.state === "error"
+    ? `<div class="editor-status-warning" role="status">${messageLine(ICONS.triangleExclamation, statusMessage)}</div>`
+    : "";
   const visibleFields = visibleFieldDefsForItem(item);
   const editorFields = visibleFields
     .map((field) => renderField(item, field))
     .join("");
   const lockedContactNotice = state.lockedContactNoticeId === item.id
-    ? `<div class="editor-inline-notice" role="status">${escapeHtml(LOCKED_CONTACT_MESSAGE)}</div>`
+    ? `<div class="editor-inline-notice" role="status">${messageLine(ICONS.lock, LOCKED_CONTACT_MESSAGE)}</div>`
     : "";
   return `
     <div class="row-editor">
       <div class="editor-errors">${errorHtml}</div>
+      ${statusWarning}
       ${lockedContactNotice}
       <div class="field-grid editor-grid">${editorFields}</div>
     </div>
@@ -3958,6 +4466,94 @@ function isMissingExpectedLocationResponse(response, body) {
     && details.includes("not found");
 }
 
+function contactNameFromResponse(body) {
+  const contact = body?.result && typeof body.result === "object"
+    ? body.result
+    : body?.contact && typeof body.contact === "object"
+      ? body.contact
+      : body?.data && typeof body.data === "object" && !Array.isArray(body.data)
+        ? body.data
+        : body && typeof body === "object" && !Array.isArray(body)
+          ? body
+          : null;
+  if (!contact) return "";
+
+  const directName = clean(contact.fullName ?? contact.displayName ?? contact.name);
+  if (directName) return directName;
+
+  return [
+    contact.firstName,
+    contact.middleInitial,
+    contact.lastName,
+    contact.suffix,
+  ].map(clean).filter(Boolean).join(" ");
+}
+
+async function fetchContactName(refOrItem) {
+  const attempts = ["idType", "contactIdType"];
+  let lastError = null;
+
+  for (const idTypeParam of attempts) {
+    const response = await fetch(contactItemUrl(refOrItem, idTypeParam), {
+      method: "GET",
+      headers: authHeaders(false),
+    });
+    const body = await readResponse(response);
+
+    if (response.ok) return contactNameFromResponse(body);
+
+    lastError = new Error(apiErrorMessage(response, body, `Could not load contact ${refOrItem.contactIdentifier}.`));
+    if (![400, 404].includes(response.status)) break;
+  }
+
+  throw lastError ?? new Error(`Could not load contact ${refOrItem.contactIdentifier}.`);
+}
+
+function contactLookupRef(item) {
+  const contactIdentifier = clean(item.contactIdentifier);
+  if (!contactIdentifier) return null;
+
+  return {
+    contactIdType: normalizeContactIdType(item.contactIdType),
+    contactIdentifier,
+  };
+}
+
+function contactLookupKey(refOrItem) {
+  const ref = contactLookupRef(refOrItem);
+  return ref ? `${ref.contactIdType}:${ref.contactIdentifier}` : "";
+}
+
+async function resolveMissingContactNames(items = state.queue) {
+  const refsByKey = new Map();
+  items.forEach((item) => {
+    if (clean(item.contactName)) return;
+
+    const ref = contactLookupRef(item);
+    if (!ref) return;
+
+    refsByKey.set(contactLookupKey(ref), ref);
+  });
+
+  let loaded = 0;
+  let failed = 0;
+  for (const [key, ref] of refsByKey) {
+    try {
+      const name = await fetchContactName(ref);
+      if (!name) continue;
+
+      items.forEach((item) => {
+        if (contactLookupKey(item) === key) item.contactName = name;
+      });
+      loaded += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  return { requested: refsByKey.size, loaded, failed };
+}
+
 function toLocalInputFromApiDate(value, timeZone = currentScheduleTimeZone()) {
   if (value === null || value === undefined || value === "") return "";
   if (typeof value === "number" && Number.isFinite(value)) return toLocalInput(value, timeZone);
@@ -3984,6 +4580,7 @@ function itemFromApiExpectedLocation(result, ref) {
     expectedLocationId: locationId,
     contactIdType,
     contactIdentifier,
+    contactName: clean(ref.contactName ?? ref.lastKnown?.contactName),
     sourceContactIdType: contactIdType,
     sourceContactIdentifier: contactIdentifier,
     locationEntryMode: locationEntryMode(address),
@@ -4113,12 +4710,23 @@ async function loadSelectedSessionFromEverbridge() {
     state.pendingDeletes = (session.pendingDeleteRefs ?? []).map(normalizePendingDeleteRef).filter(Boolean);
     state.selectedRowIds.clear();
     state.expandedId = null;
+    if (state.queue.some((item) => !clean(item.contactName) && clean(item.contactIdentifier))) {
+      setImportStatus("Loading contact names from Everbridge...", "sending");
+    }
+    const contactLookup = await resolveMissingContactNames(state.queue);
     saveActiveSessionFromQueue();
     renderQueue();
+    const contactLookupWarning = contactLookup.failed
+      ? ` Contact names could not be loaded for ${contactLookup.failed} contact${contactLookup.failed === 1 ? "" : "s"}.`
+      : "";
 
     if (failures.length) {
-      setImportStatus(`Loaded ${loadedRows.length} rows. ${failures.length} saved location${failures.length === 1 ? "" : "s"} could not be retrieved: ${failures.join(" ")}`, "warn");
+      setImportStatus(`Loaded ${loadedRows.length} rows. ${failures.length} saved location${failures.length === 1 ? "" : "s"} could not be retrieved: ${failures.join(" ")}${contactLookupWarning}`, "warn");
       setToast("Schedule loaded with retrieval warnings.", "warn");
+    } else if (contactLookup.failed) {
+      const source = refsToLoad.length ? " from Everbridge" : "";
+      setImportStatus(`Loaded schedule "${session.name}"${source}. Edit rows or remove rows, then apply changes.${contactLookupWarning}`, "warn");
+      setToast("Schedule loaded with contact lookup warnings.", "warn");
     } else {
       const source = refsToLoad.length ? " from Everbridge" : "";
       setImportStatus(`Loaded schedule "${session.name}"${source}. Edit rows or remove rows, then apply changes.`, "success");
@@ -4153,6 +4761,11 @@ async function createExpectedLocations(items) {
   const body = await readResponse(response);
   const result = classifyEverbridgeResponse(response, body);
   applyResponseToRows(result, items);
+  const createdItems = items.filter((item) => isSyncedUploadState(item.uploadStatus?.state) && clean(item.expectedLocationId) && !clean(item.contactName));
+  if (createdItems.length) {
+    await resolveMissingContactNames(createdItems);
+    renderQueue();
+  }
   autoSaveActiveSession();
   return result;
 }
@@ -4517,6 +5130,8 @@ els.scheduleMoreToggle.addEventListener("click", () => {
   setScheduleMoreMenu(els.scheduleMoreMenu.hidden);
 });
 
+els.printSchedule.addEventListener("click", printCurrentSchedule);
+
 els.exportSession.addEventListener("click", () => {
   setScheduleMoreMenu(false);
   exportCurrentSchedule();
@@ -4648,7 +5263,7 @@ els.newSession.addEventListener("click", () => {
   state.pendingAuthRefreshSessionId = "";
   saveActiveSessionFromQueue();
   renderQueue();
-  setImportStatus("New schedule created. Add rows or load a CSV, then apply changes.", "idle");
+  setImportStatus("New schedule created. Add rows or import locations, then apply changes.", "idle");
 });
 
 els.deleteSession.addEventListener("click", () => {
@@ -4863,17 +5478,27 @@ els.queueBody.addEventListener("click", async (event) => {
     return;
   }
 
+  const duplicate = event.target.closest("[data-duplicate]");
+  if (duplicate) {
+    event.preventDefault();
+    if (state.editingNoteId) finishInlineNoteEdit(true);
+    const item = state.queue.find((row) => row.id === duplicate.dataset.duplicate);
+    if (item) duplicateQueueItem(item);
+    return;
+  }
+
   const toggle = event.target.closest("[data-toggle]");
   if (toggle) {
-    if (state.editingNoteId) finishInlineNoteEdit(true);
-    state.expandedId = state.expandedId === toggle.dataset.toggle ? null : toggle.dataset.toggle;
-    state.lockedContactNoticeId = null;
-    renderQueue();
+    toggleQueueRow(toggle.dataset.toggle);
     return;
   }
 
   const remove = event.target.closest("[data-remove]");
-  if (!remove) return;
+  if (!remove) {
+    const rowId = rowClickToggleId(event);
+    if (rowId) toggleQueueRow(rowId);
+    return;
+  }
 
   const item = state.queue.find((row) => row.id === remove.dataset.remove);
   if (!item) return;
@@ -4891,6 +5516,16 @@ els.queueBody.addEventListener("click", async (event) => {
   if (state.expandedId === remove.dataset.remove) state.expandedId = null;
   autoSaveActiveSession();
   renderQueue();
+});
+
+els.timelineAxis?.addEventListener("click", (event) => {
+  if (state.isSending) return;
+
+  const segment = event.target.closest("[data-timeline-row]");
+  if (!segment) return;
+
+  event.preventDefault();
+  focusTimelineRow(segment.dataset.timelineRow);
 });
 
 els.queueBody.addEventListener("keydown", (event) => {
@@ -5130,6 +5765,8 @@ window.addEventListener("beforeunload", (event) => {
   event.preventDefault();
   event.returnValue = "";
 });
+
+window.addEventListener("beforeprint", renderPrintReport);
 
 loadStoredConnection();
 loadStoredSessions();
