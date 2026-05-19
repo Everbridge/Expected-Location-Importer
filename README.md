@@ -12,7 +12,7 @@ Open `http://localhost:5173`.
 
 ## Workflow
 
-- Use `Download CSV Template` for the expected headers and example rows.
+- Use `Download Everbridge Expected Location Template` for the expected headers and example rows.
 - Use `Load CSV` to add CSV rows to the selected schedule. If no schedule is selected, the app creates a new saved schedule.
 - Use `Add Row` for manual entry.
 - Expand any row in the table to edit it before sending.
