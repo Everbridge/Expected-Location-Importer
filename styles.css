@@ -429,6 +429,32 @@ select {
   height: 36px;
 }
 
+input[type="datetime-local"] {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+@supports (-webkit-touch-callout: none) {
+  .detail-row .editor-grid .field-arriveDate input,
+  .detail-row .editor-grid .field-expireDate input {
+    display: block;
+    height: 36px;
+    min-height: 36px;
+    max-height: 36px;
+    padding: 6px 8px;
+    appearance: none;
+    -webkit-appearance: none;
+    font-size: 16px;
+    line-height: 20px;
+  }
+
+  .detail-row .editor-grid .field-arriveDate input::-webkit-date-and-time-value,
+  .detail-row .editor-grid .field-expireDate input::-webkit-date-and-time-value {
+    min-height: 20px;
+    text-align: left;
+  }
+}
+
 input[type="checkbox"] {
   width: 17px;
   height: 17px;
@@ -1288,7 +1314,6 @@ tr:last-child td {
   position: sticky;
   right: 0;
   z-index: 2;
-  box-shadow: -1px 0 0 var(--line);
 }
 
 .actions-col {
