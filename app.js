@@ -2017,11 +2017,11 @@ function renderQueue() {
 function renderUploadStatus(item) {
   const status = item.uploadStatus ?? { state: "pending", message: "Not sent" };
   const labels = {
-    pending: "Not sent",
-    refreshing: "Refreshing",
-    sending: "Sending",
-    success: "Sent",
-    warn: "Review",
+    pending: "Draft",
+    refreshing: "Checking",
+    sending: "Applying Changes",
+    success: "Created",
+    warn: "Needs Review",
     error: "Failed",
   };
   return `

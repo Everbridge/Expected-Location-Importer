@@ -16,10 +16,10 @@ The project started as a static Expected Location CSV importer and expanded into
 - Each schedule has a UUID, name, description, history, saved location references, drafts, and last known row snapshots.
 - Saved schedules live only in the current browser on the current computer; the Schedule section must show a clear storage notice at the bottom of the section.
 - The Schedule header contains the section title, saved schedule dropdown, `New`, and `Delete` icon buttons on the same row where space allows.
-- Schedule name and description sit inside the Schedule section as full-width stacked fields with labels on the left.
+- Schedule Name and Note sit inside the Schedule section as full-width stacked fields with labels on the left.
 - Loading a CSV adds rows as local drafts to the active schedule. If no schedule is selected, the app creates a new schedule named `Schedule <timestamp>`.
 - Selecting a saved schedule saves the current schedule first, then loads the selected schedule.
-- Rows retrieved from Everbridge while switching saved schedules use a `Refreshing` status, not `Sending`, because the operation is a GET that refreshes local data.
+- Rows retrieved from Everbridge while switching saved schedules use a `Checking` status, not `Applying Changes`, because the operation is a GET that refreshes local data.
 - Saved schedule data is restored from this browser immediately, but Everbridge refresh requires complete authentication. Because the password is never stored, a page reload shows local saved details and asks the user to enter the password before clicking `Refresh`.
 - If a saved location cannot be retrieved from Everbridge, the row stays visible as a recreate candidate and `Apply Changes` remains enabled so the user can recreate it from the saved local details.
 - Drafts, failed rows, last upload status, and returned Expected Location IDs must survive page reloads.
@@ -241,8 +241,8 @@ The Schedule section sits between Authentication and Expected Locations.
 Schedule fields:
 
 - saved schedule dropdown
-- schedule name
-- schedule description
+- Name
+- Note
 - schedule summary with active location count and draft count
 - storage notice at the bottom of the Schedule section explaining that saved schedules are stored only in the current browser on the current computer
 
@@ -307,7 +307,7 @@ Existing Expected Locations loaded from a schedule lock and visually gray out th
 
 Failed rows are an exception. If a failed row has no Expected Location ID, its contact fields remain editable. If a failed row had an Expected Location ID and the contact is changed, the app converts that row into an unsent draft for the new contact so the next send creates a new location instead of updating the previous contact/path.
 
-Unsent draft rows do not have an Expected Location ID. Their contact fields remain editable regardless of saved draft status, including restored `Sending` states from an interrupted browser session.
+Unsent draft rows do not have an Expected Location ID. Their contact fields remain editable regardless of saved draft status, including restored in-progress states from an interrupted browser session.
 
 When an unsent draft fails because the contact ID was wrong, users can correct the contact and send again. If that later create succeeds, the successful contact becomes the row's saved source contact so future updates do not report a false contact-change error.
 
@@ -347,14 +347,14 @@ Edited, pending update
 
 Rows support these upload states:
 
-- `Not sent`
-- `Refreshing`
-- `Sending`
-- `Sent`
-- `Review`
+- `Draft`
+- `Checking`
+- `Applying Changes`
+- `Created`
+- `Needs Review`
 - `Failed`
 
-During saved schedule loading, rows being retrieved from Everbridge are set to `Refreshing`. During a send or sync, rows participating in a create or update operation are set to `Sending`. Unchanged loaded rows keep their existing status.
+During saved schedule loading, rows being retrieved from Everbridge are shown as `Checking`. During a send or sync, rows participating in a create, update, or delete operation are shown as `Applying Changes`. Unchanged loaded rows keep their existing status.
 
 After the API response, `app.js` attempts to map response details back to individual rows.
 
