@@ -444,13 +444,14 @@ input[type="datetime-local"] {
     padding: 6px 8px;
     appearance: none;
     -webkit-appearance: none;
-    font-size: 16px;
+    font-size: inherit;
     line-height: 20px;
   }
 
   .detail-row .editor-grid .field-arriveDate input::-webkit-date-and-time-value,
   .detail-row .editor-grid .field-expireDate input::-webkit-date-and-time-value {
     min-height: 20px;
+    font-size: inherit;
     text-align: left;
   }
 }
