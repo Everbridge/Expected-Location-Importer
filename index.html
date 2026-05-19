@@ -118,14 +118,25 @@
                 <div class="combo-menu" id="timeZoneOptions" role="listbox" hidden></div>
               </div>
             </label>
-            <label class="schedule-field-row schedule-note-field">
-              <span>Note</span>
-              <textarea id="sessionDescription" name="sessionDescription" rows="2" placeholder="Schedule context, owner, or notes"></textarea>
-            </label>
+            <div class="schedule-field-row schedule-note-field">
+              <button class="row-note row-note-button" type="button" id="sessionDescriptionDisplay" aria-label="Edit schedule note" title="Edit note" hidden>
+                <span class="row-note-label"><svg class="fontawesome-icon" aria-hidden="true" focusable="false" viewBox="0 0 448 512"><path d="M64 32C28.7 32 0 60.7 0 96L0 416c0 35.3 28.7 64 64 64l224 0 0-112c0-26.5 21.5-48 48-48l112 0 0-224c0-35.3-28.7-64-64-64L64 32zM448 352l-45.3 0L336 352c-8.8 0-16 7.2-16 16l0 66.7 0 45.3 32-32 64-64 32-32z"></path></svg><span class="visually-hidden">Note</span></span>
+                <span class="row-note-text" id="sessionDescriptionText">Click to add a schedule note</span>
+              </button>
+              <div class="row-note row-note-editor" id="sessionDescriptionEditor">
+                <label class="row-note-label" for="sessionDescription"><svg class="fontawesome-icon" aria-hidden="true" focusable="false" viewBox="0 0 448 512"><path d="M64 32C28.7 32 0 60.7 0 96L0 416c0 35.3 28.7 64 64 64l224 0 0-112c0-26.5 21.5-48 48-48l112 0 0-224c0-35.3-28.7-64-64-64L64 32zM448 352l-45.3 0L336 352c-8.8 0-16 7.2-16 16l0 66.7 0 45.3 32-32 64-64 32-32z"></path></svg><span class="visually-hidden">Note</span></label>
+                <div class="note-editor-control">
+                  <textarea id="sessionDescription" name="sessionDescription" rows="3" placeholder="Schedule context, owner, or notes"></textarea>
+                  <button class="icon-button note-confirm-button" type="button" id="sessionDescriptionConfirm" aria-label="Save schedule note" title="Save note">
+                    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <p class="schedule-storage-note">
-            Saved schedules are stored only in this browser on this computer. Use the same browser to return to this work, and coordinate with your team before switching devices or clearing browser data.
+            Saved schedules stay in this browser on this computer. Use Export/Import to hand off work; share files only with authorized team members.
           </p>
         </section>
 
@@ -163,8 +174,18 @@
                 <tr>
                   <th class="select-col"><input class="row-select-checkbox" id="selectAllRows" type="checkbox" aria-label="Select all rows"></th>
                   <th class="narrow-col"></th>
-                  <th class="contact-col">Contact ID</th>
-                  <th class="timeframe-col">Timeframe</th>
+                  <th class="contact-col" aria-sort="none">
+                    <button class="table-sort-button" type="button" id="sortContact" data-sort-field="contact" aria-label="Sort by Contact ID">
+                      <span>Contact ID</span>
+                      <span class="sort-indicator" aria-hidden="true"></span>
+                    </button>
+                  </th>
+                  <th class="timeframe-col" aria-sort="ascending">
+                    <button class="table-sort-button active" type="button" id="sortTimeframe" data-sort-field="timeframe" aria-label="Sort by Timeframe ascending">
+                      <span>Timeframe</span>
+                      <span class="sort-indicator" aria-hidden="true"></span>
+                    </button>
+                  </th>
                   <th>Location</th>
                   <th>Address</th>
                   <th class="status-col">Status</th>

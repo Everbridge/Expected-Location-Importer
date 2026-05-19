@@ -26,9 +26,9 @@ The project started as a static Expected Location CSV importer and expanded into
 
 - Use `Schedule`, not `Session`, in the user interface.
 - Each schedule has a UUID, Name, Note, default Time Zone, saved location references, drafts, and last known row snapshots.
-- Saved schedules live only in the current browser on the current computer; the Schedule section must show a clear storage notice at the bottom of the section.
+- Saved schedules live only in the current browser on the current computer; the Schedule section must show a concise storage notice at the bottom and mention Export/Import for authorized handoff.
 - The Schedule header contains the section title, Saved Schedules combo, a compact `New Schedule` icon button, and a compact `More Schedule Actions` menu on the same row where space allows. The More menu contains `Import Schedule`, `Export Schedule`, and `Delete Schedule`.
-- Schedule Name and default Time Zone share one row where space allows, each taking 50% width. Note sits below them as a full-width field. Schedule form labels sit above fields to match the Expected Locations editor style.
+- Schedule Name and default Time Zone share one row where space allows, each taking 50% width. Note sits below them as a full-width yellow note field: click the note to edit it, then use the visible check button to confirm and return to display mode. Schedule form labels sit above fields to match the Expected Locations editor style.
 - Schedule Time Zone uses the same editable combo control as row Time Zone.
 - `Export` downloads the current schedule as a JSON handoff file. `Import` validates a JSON schedule export and imports it as a local schedule without calling Everbridge.
 - Loading a CSV adds rows as local drafts to the active schedule. If no schedule is selected, the app creates a new schedule named `Schedule <timestamp>`.
@@ -230,7 +230,7 @@ The UI has:
 CSV template headers:
 
 ```csv
-Contact ID Type,Contact ID,Start Time,End Time,Time Zone,Location Type,Asset External ID,IATA,Location Name,Street Address,City,State/Province,Country,Suite,Postal Code,Latitude,Longitude
+Contact ID Type,Contact ID,Start Time,End Time,Time Zone,Location Type,Asset External ID,IATA,Location Name,Note,Street Address,City,State/Province,Country,Suite,Postal Code,Latitude,Longitude
 ```
 
 Template includes examples for:
@@ -265,10 +265,10 @@ Schedule fields:
 
 - Saved Schedules combo using the same dropdown look and keyboard behavior as other controlled combo fields
 - Name
-- Note
+- Note, shown with the same yellow note display/editor control used for Expected Location row notes; a Font Awesome `note-sticky` icon replaces the visible Note label, and the note can be clicked to edit and confirmed with a check button
 - Time Zone
 - schedule summary with active location count and draft count
-- storage notice at the bottom of the Schedule section explaining that saved schedules are stored only in the current browser on the current computer
+- concise one-line storage notice at the bottom of the Schedule section explaining that saved schedules stay in this browser on this computer and that Export/Import should be used for authorized handoff
 
 Schedule actions:
 
@@ -278,7 +278,7 @@ Schedule actions:
 - `Export`: saves the current schedule to a JSON file for handoff to another authorized assistant or workstation
 - `Delete`: removes only the currently selected local schedule record; it does not delete Everbridge Expected Locations
 - `Refresh` in the Expected Locations section: retrieves the selected schedule's saved Expected Locations from Everbridge after authentication is complete
-- successful refresh from Everbridge overwrites pending local edits for saved Expected Locations; unsent draft rows without an Expected Location ID remain local because they have no server record to refresh
+- successful refresh from Everbridge overwrites pending local edits for saved Expected Locations and marks those rows as `Refreshed`; unsent draft rows without an Expected Location ID remain local because they have no server record to refresh
 - loading a CSV into the active schedule, adding or editing rows, removing rows, deleting selected rows, switching schedules, and sending to Everbridge automatically saves the active schedule locally
 - changing the schedule Time Zone automatically saves the schedule; it does not rewrite existing row times because each row stores its own effective Time Zone
 - loading a CSV while a schedule is selected appends those rows to the current schedule; loading a CSV with no schedule selected creates a new schedule
@@ -293,7 +293,7 @@ Schedule actions:
 Schedule export/import:
 
 - export format is JSON with `type: "everbridge-expected-location-schedule"`, `version: 2`, `exportedAt`, and one compact `schedule`
-- exported files include schedule Name, Note, default Time Zone, saved Expected Location IDs, contact references, compact row snapshots, drafts, pending delete IDs, row time zones, and row status when needed
+- exported files include schedule Name, Note, default Time Zone, selected table sort, saved Expected Location IDs, contact references, compact row snapshots, drafts, pending delete IDs, row time zones, and row status when needed
 - import accepts the tool's schedule export package or a single current `version: 2` compact schedule object
 - import rejects unsupported versions, invalid JSON, malformed rows, duplicate saved location IDs, files larger than 2 MB, and files containing multiple schedules
 - import is non-destructive: it creates a local schedule, generates a new UUID if the imported ID collides with an existing local schedule, and does not call Everbridge automatically
@@ -317,6 +317,7 @@ Stored schedule shape:
       "name": "Schedule 2026-05-18 09:00",
       "note": "Schedule context",
       "tz": "America/New_York",
+      "sort": ["contact", "desc"],
       "locations": [
         {
           "id": "2233144086364164",
@@ -327,6 +328,7 @@ Stored schedule shape:
           "expire": "2026-05-18T17:00",
           "tz": "America/New_York",
           "name": "HQ",
+          "note": "Meetings on floor 2",
           "street": "25 Corporate Dr",
           "city": "Burlington",
           "region": "MA",
@@ -345,6 +347,8 @@ The app reads and writes the current compact `version: 2` schedule shape only. O
 Each stored row snapshot includes its last upload status only when it differs from the default. Draft rows that have not returned an Everbridge Expected Location ID are retained in `drafts`. Manual row entry creates a local schedule automatically when needed so unsent drafts are tied to a schedule before they are sent. Unapplied edits to rows that already have Expected Location IDs are retained as compact fields directly on each stored location and restored as pending updates when the schedule is loaded again.
 
 Stored row snapshots include compact `type` values (`address`, `asset`, or `iata`) so the selected Location Type survives page reloads. They also include compact `tz` values so row time zones survive reloads and handoff through export/import.
+
+Each schedule can store its current table sort as a compact `sort` tuple of `[field, direction]`, where field is `timeframe` or `contact` and direction is `asc` or `desc`. The default `timeframe` ascending sort may be omitted from storage.
 
 The app stores and displays row times as local wall-clock values in the row Time Zone. When building Everbridge create or update payloads, it converts the row's `arriveDate` and `expireDate` to UTC ISO timestamps using that row Time Zone.
 
@@ -366,6 +370,10 @@ When an unsent draft fails because the contact ID was wrong, users can correct t
 
 The Expected Locations table is the source of truth.
 
+Rows are ordered by timeframe by default, using Start Time first, End Time second, and Contact ID as the ascending tie-breaker. The `Contact ID` and `Timeframe` column headers are sortable; clicking the active sort header toggles ascending/descending. The selected sort order is saved with the active schedule and restored after page refresh or schedule import/export. Times are compared in each row's Time Zone so travel schedules stay in chronological sequence. Rows without a valid timeframe appear after dated rows.
+
+Rows representing current events are highlighted with a light green background. Rows whose End Time is in the past are muted with a light gray background that matches the existing neutral palette. Rows with data checking issues use a warning indicator rather than a separate background color, so time-state highlighting remains clear. Missing summary values such as `Missing Asset External ID` display in red.
+
 Rows are not auto-expanded by app actions such as CSV load, schedule refresh, or validation failure. A newly added manual row expands immediately so the user can enter the expected location details.
 
 Each row shows:
@@ -376,10 +384,12 @@ Each row shows:
 - `Timeframe` column with Start Time and End Time timestamps in matching bold text; timestamp lines must not wrap
 - `Location` column with Location Name for address rows, or Location Type for Asset External ID and IATA rows; this column has no subtitle
 - `Address` column with address summary for address rows, or only the Asset External ID / IATA value for lookup rows
+- optional row Note shown as a second full-width line below the other row fields when populated, using a Font Awesome `note-sticky` icon instead of a visible text label; clicking the note opens a local inline editor with a visible check button to confirm edits, saving to the schedule without marking the row for Everbridge changes
 - upload status
+- red warning indicator before edit when the row has data checking issues; the row does not show a separate issue-count note
 - compact icon actions for edit/done and remove
 
-Expanded rows show an inline editor for all row fields, including the row Time Zone. Editor fields use one aligned responsive grid so Contact, Time, and Location controls share the same column tracks. On wider screens, the editor uses a dense 8-column layout: contact and location identity fields share the first row, Start Time and End Time sit beside a wider Time Zone field, Street Address gets half-width space, State/Province appears before Country, and Latitude/Longitude use compact side-by-side fields. Country is searchable by code or country name while typing, displays the full country name after selection, and keeps the selected country code locally for search/storage. Everbridge payloads send the full country name. For US addresses, State/Province is searchable by state code or state name while typing, displays the code and full state name in the UI, stores the full state name, and Everbridge payloads send the full state name. Searchable combo fields support keyboard selection with Up/Down arrows and Enter. Contact ID Type and Location Type use the same controlled combo styling; Contact ID Type only allows `Contact ID` and `External ID`, and Location Type only allows `Address`, `Asset External ID`, and `IATA`.
+Expanded rows show an inline editor for all row fields, including the row Time Zone and row Note. Editor fields use one aligned responsive grid so Contact, Time, and Location controls share the same column tracks. On wider screens, the editor uses a dense 8-column layout: contact and location identity fields share the first row, Start Time and End Time sit beside a wider Time Zone field, Street Address gets half-width space, State/Province appears before Country, Latitude/Longitude use compact side-by-side fields, and Note spans the full editor width. Country is searchable by code or country name while typing, displays the full country name after selection, and keeps the selected country code locally for search/storage. Everbridge payloads send the full country name. For US addresses, State/Province is searchable by state code or state name while typing, displays the code and full state name in the UI, stores the full state name, and Everbridge payloads send the full state name. Searchable combo fields support keyboard selection with Up/Down arrows and Enter. Contact ID Type and Location Type use the same controlled combo styling; Contact ID Type only allows `Contact ID` and `External ID`, and Location Type only allows `Address`, `Asset External ID`, and `IATA`. Row Note is stored locally, included in CSV and schedule export/import, and is not included in Everbridge API payloads unless Everbridge returns a note-like field during refresh.
 
 For unsent draft rows, the remove action deletes the row locally. For rows with an Expected Location ID, the remove action calls Everbridge immediately through the batch delete endpoint. The row remains visible with an in-progress or error status until the delete succeeds. After a successful delete, the row is removed from the table and the schedule's saved location references are updated.
 
@@ -403,12 +413,16 @@ Rows support these upload states:
 
 - `Draft`
 - `Checking`
+- `Refreshed`
 - `Applying Changes`
 - `Created`
+- `Updated`
 - `Needs Review`
 - `Failed`
 
-During saved schedule loading, rows being retrieved from Everbridge are shown as `Checking`. During a send or sync, rows participating in a create, update, or delete operation are shown as `Applying Changes`. Unchanged loaded rows keep their existing status.
+During saved schedule loading, rows being retrieved from Everbridge are shown as `Checking`. Rows successfully overwritten with the latest details from Everbridge are shown as `Refreshed`. During a send or sync, rows participating in a create, update, or delete operation are shown as `Applying Changes`. Unchanged loaded rows keep their existing status.
+
+After `Apply Changes`, successfully created rows are shown as `Created` and successfully updated rows are shown as `Updated`. Both successful states keep the returned or saved Expected Location ID in the status detail as `Location ID: <id>`.
 
 After the API response, `app.js` attempts to map response details back to individual rows.
 

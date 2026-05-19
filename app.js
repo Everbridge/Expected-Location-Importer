@@ -8,6 +8,7 @@ const CSV_COLUMNS = [
   "assetExternalId",
   "iata",
   "locationName",
+  "note",
   "streetAddress",
   "city",
   "state",
@@ -28,6 +29,7 @@ const CSV_TEMPLATE_HEADERS = {
   assetExternalId: "Asset External ID",
   iata: "IATA",
   locationName: "Location Name",
+  note: "Note",
   streetAddress: "Street Address",
   city: "City",
   state: "State/Province",
@@ -92,6 +94,7 @@ const FIELD_DEFS = [
   { key: "postalCode", label: "Postal Code", locationModes: ["address"] },
   { key: "lat", label: "Latitude", inputmode: "decimal", locationModes: ["address"] },
   { key: "lon", label: "Longitude", inputmode: "decimal", locationModes: ["address"] },
+  { key: "note", label: "Note", type: "textarea", rows: 3, placeholder: "Optional schedule note for this location" },
 ];
 
 const HEADER_ALIASES = {
@@ -123,6 +126,9 @@ const HEADER_ALIASES = {
   locationtype: "locationEntryMode",
   lon: "lon",
   longitude: "lon",
+  note: "note",
+  notes: "note",
+  locationnote: "note",
   postalcode: "postalCode",
   region: "region",
   start: "arriveDate",
@@ -147,13 +153,16 @@ const SCHEDULE_EXPORT_TYPE = "everbridge-expected-location-schedule";
 const SCHEDULE_IMPORT_MAX_BYTES = 2 * 1024 * 1024;
 const CONTACT_FIELD_KEYS = new Set(["contactIdType", "contactIdentifier"]);
 const LOCKED_CONTACT_MESSAGE = "This saved location is already assigned to its original contact. To assign it to another contact, remove this location and create a new one for the correct contact.";
+const DEFAULT_QUEUE_SORT = Object.freeze({ field: "timeframe", direction: "asc" });
 
 const ICONS = {
   check: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>',
   chevronDown: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></svg>',
   chevronRight: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></svg>',
   edit: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="m16.5 3.5 4 4L8 20H4v-4L16.5 3.5z"></path></svg>',
+  noteSticky: '<svg class="fontawesome-icon" aria-hidden="true" focusable="false" viewBox="0 0 448 512"><path d="M64 32C28.7 32 0 60.7 0 96L0 416c0 35.3 28.7 64 64 64l224 0 0-112c0-26.5 21.5-48 48-48l112 0 0-224c0-35.3-28.7-64-64-64L64 32zM448 352l-45.3 0L336 352c-8.8 0-16 7.2-16 16l0 66.7 0 45.3 32-32 64-64 32-32z"></path></svg>',
   trash: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>',
+  warning: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M10.3 4 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>',
 };
 
 const COUNTRY_OPTIONS = [
@@ -469,7 +478,11 @@ const state = {
   activeSessionId: "",
   pendingDeletes: [],
   selectedRowIds: new Set(),
+  queueSort: { ...DEFAULT_QUEUE_SORT },
   expandedId: null,
+  editingScheduleNote: false,
+  editingNoteId: null,
+  editingNoteOriginal: "",
   lockedContactNoticeId: null,
   isSending: false,
   isLoadingSession: false,
@@ -490,7 +503,11 @@ const els = {
   sessionSelectToggle: document.querySelector("#sessionSelectToggle"),
   sessionSelectOptions: document.querySelector("#sessionSelectOptions"),
   sessionName: document.querySelector("#sessionName"),
+  sessionDescriptionDisplay: document.querySelector("#sessionDescriptionDisplay"),
+  sessionDescriptionText: document.querySelector("#sessionDescriptionText"),
+  sessionDescriptionEditor: document.querySelector("#sessionDescriptionEditor"),
   sessionDescription: document.querySelector("#sessionDescription"),
+  sessionDescriptionConfirm: document.querySelector("#sessionDescriptionConfirm"),
   sessionTimeZone: document.querySelector("#sessionTimeZone"),
   sessionTimeZoneToggle: document.querySelector("#sessionTimeZoneToggle"),
   timeZoneOptions: document.querySelector("#timeZoneOptions"),
@@ -510,6 +527,8 @@ const els = {
   queueCount: document.querySelector("#queueCount"),
   queueBody: document.querySelector("#queueBody"),
   selectAllRows: document.querySelector("#selectAllRows"),
+  sortContact: document.querySelector("#sortContact"),
+  sortTimeframe: document.querySelector("#sortTimeframe"),
   deleteSelected: document.querySelector("#deleteSelected"),
   sendImport: document.querySelector("#sendImport"),
   importStatus: document.querySelector("#importStatus"),
@@ -522,6 +541,37 @@ function clean(value) {
 
 function upperClean(value) {
   return clean(value).toUpperCase();
+}
+
+function queueSortParts(sort) {
+  if (Array.isArray(sort)) {
+    return { field: clean(sort[0]).toLowerCase(), direction: clean(sort[1]).toLowerCase() };
+  }
+
+  if (sort && typeof sort === "object") {
+    return {
+      field: clean(sort.field ?? sort.by).toLowerCase(),
+      direction: clean(sort.direction ?? sort.dir ?? sort.order).toLowerCase(),
+    };
+  }
+
+  return null;
+}
+
+function normalizeQueueSort(sort) {
+  const parts = queueSortParts(sort);
+  const field = parts?.field === "contact" ? "contact" : DEFAULT_QUEUE_SORT.field;
+  const direction = ["desc", "descending"].includes(parts?.direction) ? "desc" : DEFAULT_QUEUE_SORT.direction;
+  return { field, direction };
+}
+
+function compactQueueSortForStorage(sort) {
+  const normalized = normalizeQueueSort(sort);
+  if (normalized.field === DEFAULT_QUEUE_SORT.field && normalized.direction === DEFAULT_QUEUE_SORT.direction) {
+    return null;
+  }
+
+  return [normalized.field, normalized.direction];
 }
 
 function newId() {
@@ -951,6 +1001,95 @@ function toIsoFromLocal(value, timeZone = currentScheduleTimeZone()) {
   return localPartsMatch(date, normalizedTimeZone, parts) ? date.toISOString() : "";
 }
 
+function rowTimeZoneForSort(row = {}) {
+  const source = row.lastKnown && typeof row.lastKnown === "object" ? row.lastKnown : row;
+  return normalizeTimeZone(source.timeZone ?? source.tz ?? row.timeZone, currentScheduleTimeZone());
+}
+
+function sortTimeValue(value, timeZone) {
+  const iso = toIsoFromLocal(value, timeZone);
+  const time = iso ? Date.parse(iso) : NaN;
+  return Number.isFinite(time) ? time : NaN;
+}
+
+function timeframeSortValues(row = {}) {
+  const source = row.lastKnown && typeof row.lastKnown === "object" ? row.lastKnown : row;
+  const timeZone = rowTimeZoneForSort(row);
+  return {
+    start: sortTimeValue(source.arriveDate ?? source.arrive, timeZone),
+    end: sortTimeValue(source.expireDate ?? source.expire, timeZone),
+  };
+}
+
+function compareNullableNumber(left, right, direction = "asc") {
+  const leftMissing = !Number.isFinite(left);
+  const rightMissing = !Number.isFinite(right);
+  if (leftMissing && rightMissing) return 0;
+  if (leftMissing) return 1;
+  if (rightMissing) return -1;
+  return direction === "desc" ? right - left : left - right;
+}
+
+function compareNullableText(left, right, direction = "asc") {
+  const leftValue = clean(left).toLowerCase();
+  const rightValue = clean(right).toLowerCase();
+  if (!leftValue && !rightValue) return 0;
+  if (!leftValue) return 1;
+  if (!rightValue) return -1;
+  const result = leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: "base" });
+  return direction === "desc" ? -result : result;
+}
+
+function compareByTimeframe(a, b, direction = "asc") {
+  const left = timeframeSortValues(a);
+  const right = timeframeSortValues(b);
+  return compareNullableNumber(left.start, right.start, direction)
+    || compareNullableNumber(left.end, right.end, direction);
+}
+
+function rowContactSortValue(row = {}) {
+  const source = row.lastKnown && typeof row.lastKnown === "object" ? row.lastKnown : row;
+  return clean(source.contactIdentifier ?? source.contactID ?? row.contactIdentifier ?? row.contactID);
+}
+
+function compareByContact(a, b, direction = "asc") {
+  return compareNullableText(rowContactSortValue(a), rowContactSortValue(b), direction);
+}
+
+function compareByQueueSort(a, b, sort = state.queueSort) {
+  const direction = sort.direction === "desc" ? "desc" : "asc";
+  if (sort.field === "contact") {
+    return compareByContact(a, b, direction) || compareByTimeframe(a, b, "asc");
+  }
+
+  return compareByTimeframe(a, b, direction) || compareByContact(a, b, "asc");
+}
+
+function sortRows(rows = [], sort = state.queueSort) {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => compareByQueueSort(a.row, b.row, sort) || a.index - b.index)
+    .map(({ row }) => row);
+}
+
+function sortByTimeframe(rows = []) {
+  return sortRows(rows, { field: "timeframe", direction: "asc" });
+}
+
+function sortQueue() {
+  state.queue = sortRows(state.queue);
+}
+
+function rowTimeState(item) {
+  const timeZone = itemTimeZone(item);
+  const start = sortTimeValue(item.arriveDate, timeZone);
+  const end = sortTimeValue(item.expireDate, timeZone);
+  const now = Date.now();
+  if (Number.isFinite(end) && end < now) return "past";
+  if (Number.isFinite(start) && Number.isFinite(end) && start <= now && end >= now) return "current";
+  return "";
+}
+
 function defaultWindow(timeZone = currentScheduleTimeZone()) {
   const start = new Date();
   start.setSeconds(0, 0);
@@ -1001,6 +1140,7 @@ function createItem(overrides = {}, useDefaults = true) {
     arriveDate: windowDefaults.arriveDate,
     expireDate: windowDefaults.expireDate,
     timeZone: defaultTimeZone,
+    note: "",
     streetAddress: "",
     suite: "",
     city: "",
@@ -1171,6 +1311,7 @@ function serializeItem(item) {
     arriveDate: clean(item.arriveDate),
     expireDate: clean(item.expireDate),
     timeZone: clean(item.timeZone) || currentScheduleTimeZone(),
+    note: clean(item.note),
     assetExternalId: clean(item.assetExternalId),
     iata: clean(item.iata).toUpperCase(),
     locationName: clean(item.locationName),
@@ -1192,7 +1333,7 @@ function locationIdFromStatusMessage(message) {
 }
 
 function normalizeUploadStatus(status, row = {}) {
-  const allowedStates = new Set(["pending", "refreshing", "sending", "success", "warn", "error"]);
+  const allowedStates = new Set(["pending", "refreshing", "refreshed", "sending", "success", "updated", "warn", "error"]);
   const expectedLocationId = clean(row?.expectedLocationId) || locationIdFromStatusMessage(status?.message);
   const hasExpectedLocation = Boolean(expectedLocationId);
   let state = allowedStates.has(clean(status?.state)) ? clean(status.state) : "";
@@ -1200,7 +1341,7 @@ function normalizeUploadStatus(status, row = {}) {
 
   if (!state) state = hasExpectedLocation ? "success" : "pending";
 
-  if (state === "success" && hasExpectedLocation) {
+  if (isSyncedUploadState(state) && hasExpectedLocation) {
     message = `Location ID: ${expectedLocationId}`;
   }
 
@@ -1215,6 +1356,10 @@ function normalizeUploadStatus(status, row = {}) {
   }
 
   return { state, message };
+}
+
+function isSyncedUploadState(state) {
+  return state === "success" || state === "updated" || state === "refreshed";
 }
 
 function restoreDraftItem(row) {
@@ -1293,6 +1438,7 @@ function compactRowForStorage(row, includeContact = true, defaults = {}) {
     recreate: clean(item.recreateFromLocationId),
     dirty: expectedLocationId && (shouldRecreateLocation(item) || item.uploadStatus?.state === "pending" || hasUnsyncedLocalItem(item)) ? true : "",
     status: compactUploadStatusForStorage(item),
+    note: clean(item.note),
   };
 
   if (mode === "assetExternalId") {
@@ -1328,6 +1474,7 @@ function expandCompactRow(row, defaults = {}) {
     arriveDate: clean(row.arrive),
     expireDate: clean(row.expire),
     timeZone: normalizeTimeZone(row.tz, defaultTimeZone),
+    note: clean(row.note),
     assetExternalId: clean(row.asset),
     iata: clean(row.iata).toUpperCase(),
     locationName: clean(row.name),
@@ -1396,6 +1543,7 @@ function compactSessionForStorage(session) {
     name: clean(session.name),
     note: clean(session.description),
     tz: timeZone,
+    sort: compactQueueSortForStorage(session.sort),
     locations: (session.locationRefs ?? []).map((ref) => compactLocationRefForStorage(ref, { timeZone })).filter(Boolean),
     deleteIds: (session.pendingDeleteRefs ?? []).map(refKey).filter(Boolean),
     drafts: (session.draftRows ?? []).map((row) => compactRowForStorage(row, true, { timeZone })).filter(Boolean),
@@ -1506,6 +1654,21 @@ function validateCompactRowForImport(row, label, requireSavedLocationFields = fa
   return errors;
 }
 
+function validateQueueSortForImport(sort) {
+  if (sort === undefined || sort === null || sort === "") return "";
+
+  const parts = queueSortParts(sort);
+  if (!parts) return "The schedule sort field must be a two-value array or object.";
+  if (!["contact", "timeframe"].includes(parts.field)) {
+    return "The schedule sort field must be Contact ID or Timeframe.";
+  }
+  if (!["asc", "ascending", "desc", "descending"].includes(parts.direction)) {
+    return "The schedule sort direction must be asc or desc.";
+  }
+
+  return "";
+}
+
 function validateScheduleForImport(schedule) {
   const errors = [];
   if (!schedule || typeof schedule !== "object" || Array.isArray(schedule)) {
@@ -1521,6 +1684,8 @@ function validateScheduleForImport(schedule) {
   if (clean(schedule.tz) && !isValidTimeZone(schedule.tz)) {
     errors.push("The schedule default time zone is invalid.");
   }
+  const sortError = validateQueueSortForImport(schedule.sort);
+  if (sortError) errors.push(sortError);
 
   const locations = schedule.locations ?? [];
   const drafts = schedule.drafts ?? [];
@@ -1638,7 +1803,11 @@ function restoreLocationItemFromRef(ref) {
   }
 
   item.syncedFingerprint ||= itemFingerprint(item);
-  setRowUploadStatus(item, "success", `Location ID: ${item.expectedLocationId}`);
+  if (isSyncedUploadState(item.uploadStatus?.state)) {
+    setRowUploadStatus(item, item.uploadStatus.state, item.uploadStatus.message);
+  } else {
+    setRowUploadStatus(item, "success", `Location ID: ${item.expectedLocationId}`);
+  }
   return item;
 }
 
@@ -1731,23 +1900,24 @@ function normalizeSession(session) {
 
   const id = clean(session.id) || newId();
   const timeZone = normalizeTimeZone(session.tz, browserTimeZone());
-  const locationRefs = (Array.isArray(session.locations) ? session.locations : [])
+  const locationRefs = sortByTimeframe((Array.isArray(session.locations) ? session.locations : [])
     .map((ref) => expandCompactLocationRef(ref, { timeZone }))
     .map((ref) => normalizeLocationRef(ref, { timeZone }))
-    .filter(Boolean);
+    .filter(Boolean));
   const pendingDeleteRefs = (Array.isArray(session.deleteIds) ? session.deleteIds : [])
     .map(normalizePendingDeleteRef)
     .filter(Boolean);
-  const draftRows = (Array.isArray(session.drafts) ? session.drafts : [])
+  const draftRows = sortByTimeframe((Array.isArray(session.drafts) ? session.drafts : [])
     .filter((row) => row && typeof row === "object")
     .map((row) => expandCompactRow(row, { timeZone }))
     .filter(Boolean)
-    .map((row) => serializeItem(restoreDraftItem(row)));
+    .map((row) => serializeItem(restoreDraftItem(row))));
   return {
     id,
     name: clean(session.name) || defaultSessionName(),
     description: clean(session.note),
     timeZone,
+    sort: normalizeQueueSort(session.sort),
     locationRefs,
     pendingDeleteRefs,
     draftRows,
@@ -1858,17 +2028,19 @@ function restoreActiveSessionLocally() {
   if (!session) {
     state.queue = [];
     state.pendingDeletes = [];
+    state.queueSort = { ...DEFAULT_QUEUE_SORT };
     state.expandedId = null;
     return false;
   }
 
+  state.queueSort = normalizeQueueSort(session.sort);
   const pendingDeleteKeys = new Set((session.pendingDeleteRefs ?? []).map(refKey));
   const persistedRows = (session.locationRefs ?? [])
     .filter((ref) => !pendingDeleteKeys.has(refKey(ref)))
     .map(restoreLocationItemFromRef);
   const draftRows = (session.draftRows ?? []).map(restoreDraftItem);
 
-  state.queue = [...persistedRows, ...draftRows];
+  state.queue = sortRows([...persistedRows, ...draftRows]);
   state.pendingDeletes = (session.pendingDeleteRefs ?? []).map(normalizePendingDeleteRef).filter(Boolean);
   state.selectedRowIds.clear();
   state.expandedId = null;
@@ -1886,6 +2058,7 @@ function replaceQueueLocationRef(ref, item) {
   } else {
     state.queue.push(item);
   }
+  sortQueue();
 }
 
 function createSession(name = defaultSessionName(), description = "") {
@@ -1894,6 +2067,7 @@ function createSession(name = defaultSessionName(), description = "") {
     name: clean(name) || defaultSessionName(),
     description: clean(description),
     timeZone: currentScheduleTimeZone(),
+    sort: normalizeQueueSort(state.queueSort),
     locationRefs: [],
     pendingDeleteRefs: [],
     draftRows: [],
@@ -1939,23 +2113,31 @@ function renderScheduleSelectOptions() {
 
 function renderSessionControls() {
   const session = currentSession();
+  const note = clean(session?.description);
 
   els.sessionSelect.value = scheduleSelectLabel(session);
   els.sessionSelect.dataset.value = session?.id ?? "";
   renderScheduleSelectOptions();
   els.sessionName.value = session?.name ?? "";
   els.sessionDescription.value = session?.description ?? "";
+  els.sessionDescriptionText.textContent = note || "Click to add a schedule note";
   els.sessionTimeZone.value = session?.timeZone ?? browserTimeZone();
   els.sessionTimeZone.classList.toggle("invalid", Boolean(session) && !isValidTimeZone(els.sessionTimeZone.value));
   renderScheduleTimeZoneOptions(els.sessionTimeZone.value);
   els.sessionMeta.textContent = sessionSummary(session);
 
   const disabled = state.isSending || state.isLoadingSession;
+  if (!session) state.editingScheduleNote = false;
+  const showNoteEditor = !session || state.editingScheduleNote;
+  els.sessionDescriptionDisplay.hidden = showNoteEditor;
+  els.sessionDescriptionEditor.hidden = !showNoteEditor;
+  els.sessionDescriptionDisplay.disabled = !session || disabled;
   const canRefresh = Boolean(session && sessionRefsToRefresh(session).length && isAuthReady());
   els.sessionSelect.disabled = disabled;
   els.sessionSelectToggle.disabled = disabled;
   els.sessionName.disabled = !session || disabled;
   els.sessionDescription.disabled = !session || disabled;
+  els.sessionDescriptionConfirm.disabled = !session || disabled;
   els.sessionTimeZone.disabled = !session || disabled;
   els.sessionTimeZoneToggle.disabled = !session || disabled;
   if (disabled) setFieldComboMenu(els.sessionSelect.closest(".field-combo"), false);
@@ -1973,16 +2155,19 @@ function saveActiveSessionFromQueue() {
   const session = currentSession();
   if (!session) return null;
 
+  sortQueue();
   session.name = clean(els.sessionName.value) || session.name || defaultSessionName();
   session.description = clean(els.sessionDescription.value);
   session.timeZone = clean(els.sessionTimeZone.value) || session.timeZone || browserTimeZone();
+  session.sort = normalizeQueueSort(state.queueSort);
 
   const pendingDeleteKeys = new Set(state.pendingDeletes.map(refKey));
-  const refsById = new Map(
+  const existingRefsById = new Map(
     (session.locationRefs ?? [])
       .filter((ref) => refKey(ref) && !pendingDeleteKeys.has(refKey(ref)))
       .map((ref) => [refKey(ref), ref]),
   );
+  const refsById = new Map();
 
   state.queue.forEach((item) => {
     const ref = locationRefFromItem(item);
@@ -1990,12 +2175,15 @@ function saveActiveSessionFromQueue() {
       refsById.set(refKey(ref), ref);
     }
   });
+  existingRefsById.forEach((ref, key) => {
+    if (!refsById.has(key)) refsById.set(key, ref);
+  });
 
-  session.locationRefs = [...refsById.values()];
+  session.locationRefs = sortByTimeframe([...refsById.values()]);
   session.pendingDeleteRefs = state.pendingDeletes.map(normalizePendingDeleteRef).filter(Boolean);
-  session.draftRows = state.queue
+  session.draftRows = sortByTimeframe(state.queue
     .filter((item) => !clean(item.expectedLocationId))
-    .map(serializeItem);
+    .map(serializeItem));
 
   saveStoredSessions();
   renderSessionControls();
@@ -2412,6 +2600,18 @@ function addressLookupSummary(item) {
   };
 }
 
+function isMissingSummaryText(value) {
+  return clean(value).toLowerCase().startsWith("missing ");
+}
+
+function rowTitleClass(value) {
+  return `row-title${isMissingSummaryText(value) ? " data-error-text" : ""}`;
+}
+
+function noteLabelContent() {
+  return `${ICONS.noteSticky}<span class="visually-hidden">Note</span>`;
+}
+
 function contactIdPayloadValue(value) {
   const trimmed = clean(value);
   if (/^\d+$/.test(trimmed)) {
@@ -2457,7 +2657,7 @@ function repairStaleSourceContact(item) {
   const contactChanged = item.contactIdType !== sourceType || clean(item.contactIdentifier) !== sourceContact;
   if (!contactChanged) return false;
 
-  const unchangedSinceSync = item.uploadStatus?.state === "success"
+  const unchangedSinceSync = isSyncedUploadState(item.uploadStatus?.state)
     && itemMatchesSyncedFingerprint(item);
   if (!unchangedSinceSync) return false;
 
@@ -2486,6 +2686,8 @@ function applyInputValueToItem(input, item) {
     : null;
 
   item[fieldKey] = normalizedInputValue(input, item);
+
+  if (fieldKey === "note") return;
 
   if (!clean(item.expectedLocationId) && isContactFieldKey(fieldKey)) {
     item.sourceContactIdType = "";
@@ -2852,7 +3054,7 @@ function expectedLocationIdFromEntry(entry) {
   return "";
 }
 
-function markItemSynced(item, message = "", resetSourceContact = false) {
+function markItemSynced(item, message = "", resetSourceContact = false, status = "success") {
   const replacedLocationId = clean(item.recreateFromLocationId);
   if (replacedLocationId && clean(item.expectedLocationId) !== replacedLocationId) {
     removeStoredLocationRef(replacedLocationId);
@@ -2869,7 +3071,7 @@ function markItemSynced(item, message = "", resetSourceContact = false) {
   item.syncedFingerprint = itemFingerprint(item);
   setRowUploadStatus(
     item,
-    "success",
+    status === "updated" ? "updated" : "success",
     message || (clean(item.expectedLocationId) ? `Location ID: ${clean(item.expectedLocationId)}` : "Sent"),
   );
 }
@@ -2975,6 +3177,10 @@ function refreshSelectionControls() {
 function refreshQueueActions() {
   const pendingDeleteCount = state.pendingDeletes.length;
   pruneSelectedRows();
+  if (state.editingNoteId && !state.queue.some((item) => item.id === state.editingNoteId)) {
+    state.editingNoteId = null;
+    state.editingNoteOriginal = "";
+  }
   const selectedCount = state.selectedRowIds.size;
   els.queueCount.textContent = `${state.queue.length} Record${state.queue.length === 1 ? "" : "s"}${selectedCount ? ` · ${selectedCount} Selected` : ""}${pendingDeleteCount ? ` · ${pendingDeleteCount} Delete${pendingDeleteCount === 1 ? "" : "s"}` : ""}`;
   els.sendImport.textContent = state.queue.some((item) => clean(item.expectedLocationId)) || pendingDeleteCount
@@ -2984,8 +3190,101 @@ function refreshQueueActions() {
   refreshSelectionControls();
 }
 
+function renderSortControls() {
+  [
+    ["contact", els.sortContact],
+    ["timeframe", els.sortTimeframe],
+  ].forEach(([field, button]) => {
+    if (!button) return;
+
+    const active = state.queueSort.field === field;
+    const direction = active ? state.queueSort.direction : "";
+    const label = field === "contact" ? "Contact ID" : "Timeframe";
+    const indicator = button.querySelector(".sort-indicator");
+    const th = button.closest("th");
+    button.classList.toggle("active", active);
+    button.dataset.sortDirection = active ? direction : "";
+    button.setAttribute("aria-label", active ? `Sort by ${label} ${direction === "asc" ? "descending" : "ascending"}` : `Sort by ${label}`);
+    if (indicator) indicator.hidden = !active;
+    if (th) th.setAttribute("aria-sort", active ? (direction === "asc" ? "ascending" : "descending") : "none");
+  });
+}
+
+function toggleQueueSort(field) {
+  const nextField = field === "contact" ? "contact" : "timeframe";
+  const nextDirection = state.queueSort.field === nextField && state.queueSort.direction === "asc" ? "desc" : "asc";
+  state.queueSort = { field: nextField, direction: nextDirection };
+  if (currentSession()) saveActiveSessionFromQueue();
+  renderQueue();
+}
+
+function focusScheduleNoteEditor() {
+  requestAnimationFrame(() => {
+    els.sessionDescription.focus();
+    els.sessionDescription.setSelectionRange(els.sessionDescription.value.length, els.sessionDescription.value.length);
+  });
+}
+
+function startScheduleNoteEdit() {
+  if (!currentSession() || state.isSending || state.isLoadingSession) return;
+
+  state.editingScheduleNote = true;
+  renderSessionControls();
+  focusScheduleNoteEditor();
+}
+
+function finishScheduleNoteEdit() {
+  const session = currentSession();
+  if (!session) return;
+
+  session.description = clean(els.sessionDescription.value);
+  state.editingScheduleNote = false;
+  saveActiveSessionFromQueue();
+  els.sessionDescriptionConfirm.blur();
+}
+
+function focusInlineNoteEditor(itemId) {
+  requestAnimationFrame(() => {
+    const textarea = [...els.queueBody.querySelectorAll("[data-inline-note]")]
+      .find((input) => input.dataset.inlineNote === itemId);
+    if (!textarea) return;
+
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  });
+}
+
+function startInlineNoteEdit(itemId) {
+  const item = state.queue.find((row) => row.id === itemId);
+  if (!item || state.isSending) return;
+
+  state.editingNoteId = item.id;
+  state.editingNoteOriginal = item.note ?? "";
+  renderQueue();
+  focusInlineNoteEditor(item.id);
+}
+
+function finishInlineNoteEdit(save = true) {
+  const itemId = state.editingNoteId;
+  if (!itemId) return;
+
+  const item = state.queue.find((row) => row.id === itemId);
+  const textarea = [...els.queueBody.querySelectorAll("[data-inline-note]")]
+    .find((input) => input.dataset.inlineNote === itemId);
+  if (item) {
+    item.note = save ? clean(textarea?.value ?? item.note) : state.editingNoteOriginal;
+  }
+
+  state.editingNoteId = null;
+  state.editingNoteOriginal = "";
+  autoSaveActiveSession();
+  renderQueue();
+}
+
 function renderQueue() {
+  sortQueue();
   refreshQueueActions();
+  renderSortControls();
   refreshEndpointPreview();
   renderSessionControls();
 
@@ -2999,27 +3298,37 @@ function renderQueue() {
     const errors = validateItem(item);
     const location = locationSummary(item);
     const addressLookup = addressLookupSummary(item);
+    const contactTitle = clean(item.contactIdentifier) || "Missing contact";
+    const startTitle = formatDateForTable(item.arriveDate, itemTimeZone(item)) || "Missing Start Time";
+    const endTitle = formatDateForTable(item.expireDate, itemTimeZone(item)) || "Missing End Time";
+    const note = clean(item.note);
+    const editingNote = state.editingNoteId === item.id;
+    const timeState = rowTimeState(item);
+    const timeStateClass = timeState ? `${timeState}-event` : "";
     const expanded = state.expandedId === item.id;
     const selected = state.selectedRowIds.has(item.id);
     const disabled = state.isSending ? " disabled" : "";
+    const issueSummary = errors.length
+      ? `Data check issue. Open the row to review. ${errors[0]}`
+      : "";
     const row = document.createElement("tr");
-    row.className = `summary-row ${selected ? "selected" : ""} ${expanded ? "expanded" : ""} ${errors.length ? "invalid" : ""}`.trim();
+    row.className = `summary-row ${timeStateClass} ${selected ? "selected" : ""} ${expanded ? "expanded" : ""} ${errors.length ? "invalid" : ""} ${note || editingNote ? "has-note" : ""}`.trim();
     row.innerHTML = `
       <td class="select-cell"><input class="row-select-checkbox" type="checkbox" data-row-select="${escapeAttr(item.id)}" aria-label="Select row ${index + 1}"${selected ? " checked" : ""}${disabled}></td>
       <td class="expand-cell"><button class="icon-button expand-button" type="button" data-toggle="${item.id}" aria-label="${expanded ? "Collapse" : "Expand"} row ${index + 1}" title="${expanded ? "Collapse" : "Expand"}"${disabled}>${expanded ? ICONS.chevronDown : ICONS.chevronRight}</button></td>
       <td class="contact-cell">
-        <span class="row-title">${escapeHtml(clean(item.contactIdentifier) || "Missing contact")}</span>
-        <span class="row-subtitle">${contactIdTypeLabel(item.contactIdType)}${errors.length ? ` · ${errors.length} issue${errors.length === 1 ? "" : "s"}` : ""}</span>
+        <span class="${rowTitleClass(contactTitle)}">${escapeHtml(contactTitle)}</span>
+        <span class="row-subtitle">${contactIdTypeLabel(item.contactIdType)}</span>
       </td>
       <td class="timeframe-cell">
-        <span class="row-title">${escapeHtml(formatDateForTable(item.arriveDate, itemTimeZone(item)) || "Missing Start Time")}</span>
-        <span class="row-title">${escapeHtml(formatDateForTable(item.expireDate, itemTimeZone(item)) || "Missing End Time")}</span>
+        <span class="${rowTitleClass(startTitle)}">${escapeHtml(startTitle)}</span>
+        <span class="${rowTitleClass(endTitle)}">${escapeHtml(endTitle)}</span>
       </td>
       <td>
-        <span class="row-title">${escapeHtml(location.title)}</span>
+        <span class="${rowTitleClass(location.title)}">${escapeHtml(location.title)}</span>
       </td>
       <td>
-        <span class="row-title">${escapeHtml(addressLookup.title)}</span>
+        <span class="${rowTitleClass(addressLookup.title)}">${escapeHtml(addressLookup.title)}</span>
         ${addressLookup.subtitle ? `<span class="row-subtitle">${escapeHtml(addressLookup.subtitle)}</span>` : ""}
       </td>
       <td class="status-cell">
@@ -3027,16 +3336,41 @@ function renderQueue() {
       </td>
       <td class="actions-cell">
         <div class="row-actions">
-          <button class="icon-button row-action-button" type="button" data-toggle="${item.id}" aria-label="${expanded ? "Done Editing Row" : "Edit Row"}" title="${expanded ? "Done" : "Edit"}"${disabled}>${expanded ? ICONS.check : ICONS.edit}</button>
+          <span class="row-edit-action">
+            ${errors.length ? `<span class="row-issue-indicator" role="img" aria-label="${escapeAttr(issueSummary)}" title="${escapeAttr(issueSummary)}">${ICONS.warning}</span>` : ""}
+            <button class="icon-button row-action-button" type="button" data-toggle="${item.id}" aria-label="${expanded ? "Done Editing Row" : "Edit Row"}" title="${expanded ? "Done" : "Edit"}"${disabled}>${expanded ? ICONS.check : ICONS.edit}</button>
+          </span>
           <button class="icon-button row-action-button danger" type="button" data-remove="${item.id}" aria-label="Remove Row" title="${clean(item.expectedLocationId) ? "Delete" : "Remove"}"${disabled}>${ICONS.trash}</button>
         </div>
       </td>
     `;
     els.queueBody.append(row);
 
+    if (note || editingNote) {
+      const noteRow = document.createElement("tr");
+      noteRow.className = `summary-note-row ${timeStateClass} ${selected ? "selected" : ""} ${expanded ? "expanded" : ""} ${errors.length ? "invalid" : ""}`.trim();
+      noteRow.innerHTML = `
+        <td colspan="8">
+          ${editingNote
+            ? `<div class="row-note row-note-editor">
+                <label class="row-note-label" for="${escapeAttr(`${item.id}-inline-note`)}">${noteLabelContent()}</label>
+                <div class="note-editor-control">
+                  <textarea id="${escapeAttr(`${item.id}-inline-note`)}" data-inline-note="${escapeAttr(item.id)}" rows="3" aria-label="Edit row note">${escapeHtml(item.note ?? "")}</textarea>
+                  <button class="icon-button note-confirm-button" type="button" data-save-inline-note="${escapeAttr(item.id)}" aria-label="Save row note" title="Save note">${ICONS.check}</button>
+                </div>
+              </div>`
+            : `<button class="row-note row-note-button" type="button" data-edit-note="${escapeAttr(item.id)}" aria-label="Edit row note" title="Edit note">
+                <span class="row-note-label">${noteLabelContent()}</span>
+                <span class="row-note-text">${escapeHtml(note)}</span>
+              </button>`}
+        </td>
+      `;
+      els.queueBody.append(noteRow);
+    }
+
     if (expanded) {
       const detail = document.createElement("tr");
-      detail.className = "detail-row";
+      detail.className = `detail-row ${timeStateClass}`.trim();
       detail.innerHTML = `<td colspan="8">${renderEditor(item, errors)}</td>`;
       els.queueBody.append(detail);
     }
@@ -3048,8 +3382,10 @@ function renderUploadStatus(item) {
   const labels = {
     pending: "Draft",
     refreshing: "Checking",
+    refreshed: "Refreshed",
     sending: "Applying Changes",
     success: "Created",
+    updated: "Updated",
     warn: "Needs Review",
     error: "Failed",
   };
@@ -3244,6 +3580,12 @@ function renderLockedContactField(item, field, value, options, common, required,
     return `<label ${lockedAttrs}>${escapeHtml(field.label)}<select ${lockedCommon}${required}>${selectOptions}</select></label>`;
   }
 
+  if (field.type === "textarea") {
+    const placeholder = field.placeholder ? ` placeholder="${escapeAttr(field.placeholder)}"` : "";
+    const rows = field.rows ? ` rows="${Number(field.rows)}"` : "";
+    return `<label ${lockedAttrs}>${escapeHtml(field.label)}<textarea ${lockedCommon}${rows}${placeholder}${required} readonly>${escapeHtml(value)}</textarea></label>`;
+  }
+
   const type = field.type ?? "text";
   const placeholder = field.placeholder ? ` placeholder="${escapeAttr(field.placeholder)}"` : "";
   const maxLength = field.maxLength ? ` maxlength="${field.maxLength}"` : "";
@@ -3274,6 +3616,12 @@ function renderField(item, field) {
       .map(([optionValue, label]) => `<option value="${optionValue}"${value === optionValue ? " selected" : ""}>${escapeHtml(label)}</option>`)
       .join("");
     return `<label class="${fieldClass}${wide}">${escapeHtml(field.label)}<select ${common}${required}${disabled}>${options}</select></label>`;
+  }
+
+  if (field.type === "textarea") {
+    const placeholder = field.placeholder ? ` placeholder="${escapeAttr(field.placeholder)}"` : "";
+    const rows = field.rows ? ` rows="${Number(field.rows)}"` : "";
+    return `<label class="${fieldClass}${wide}">${escapeHtml(field.label)}<textarea ${common}${rows}${placeholder}${required}${disabled}>${escapeHtml(value)}</textarea></label>`;
   }
 
   const type = field.type ?? "text";
@@ -3325,7 +3673,7 @@ function normalizedInputValue(input, item) {
 }
 
 function fieldChangeNeedsRender(input) {
-  return input.tagName === "SELECT" || input.dataset.field === "locationEntryMode" || input.dataset.field === "country" || input.dataset.field === "region";
+  return input.tagName === "SELECT" || input.dataset.field === "locationEntryMode" || input.dataset.field === "country" || input.dataset.field === "region" || input.dataset.field === "note";
 }
 
 function normalizeHeader(header) {
@@ -3412,6 +3760,7 @@ function itemFromCsvRow(headers, row) {
     arriveDate: toLocalInputFromCsv(raw.arriveDate, normalizeTimeZone(timeZone, currentScheduleTimeZone())),
     expireDate: toLocalInputFromCsv(raw.expireDate, normalizeTimeZone(timeZone, currentScheduleTimeZone())),
     timeZone,
+    note: clean(raw.note),
     streetAddress: clean(raw.streetAddress),
     suite: clean(raw.suite),
     city: clean(raw.city),
@@ -3453,10 +3802,10 @@ async function loadCsvFile(file) {
   const appendedToExisting = Boolean(session);
 
   if (session) {
-    state.queue = [...state.queue, ...items];
+    state.queue = sortRows([...state.queue, ...items]);
   } else {
     session = createSession(defaultSessionName(), file?.name ? `CSV import: ${file.name}` : "");
-    state.queue = items;
+    state.queue = sortRows(items);
     state.pendingDeletes = [];
   }
 
@@ -3492,6 +3841,7 @@ function buildTemplateCsv() {
       "",
       "",
       "Normal Day Shift - HQ",
+      "Primary office schedule",
       "25 Corporate Dr",
       "Burlington",
       "Massachusetts",
@@ -3511,6 +3861,7 @@ function buildTemplateCsv() {
       "",
       "SFO",
       "",
+      "Overnight travel window",
       "",
       "",
       "",
@@ -3530,6 +3881,7 @@ function buildTemplateCsv() {
       "SEA-OFFICE-12",
       "",
       "",
+      "Site visit",
       "",
       "",
       "",
@@ -3640,6 +3992,7 @@ function itemFromApiExpectedLocation(result, ref) {
     arriveDate: toLocalInputFromApiDate(address.arriveDate, timeZone),
     expireDate: toLocalInputFromApiDate(address.expireDate, timeZone),
     timeZone,
+    note: clean(address.note ?? address.notes ?? source?.note ?? source?.notes ?? ref?.lastKnown?.note),
     streetAddress: clean(address.streetAddress),
     suite: clean(address.suite),
     city: clean(address.city),
@@ -3650,7 +4003,7 @@ function itemFromApiExpectedLocation(result, ref) {
     lat: clean(gisLocation.lat),
     lon: clean(gisLocation.lon),
     uploadStatus: {
-      state: "success",
+      state: "refreshed",
       message: locationId ? `Location ID: ${locationId}` : "Loaded from Everbridge",
     },
   }, false);
@@ -3756,7 +4109,7 @@ async function loadSelectedSessionFromEverbridge() {
     }
 
     const draftRows = (session.draftRows ?? []).map(restoreDraftItem);
-    state.queue = [...loadedRows, ...draftRows];
+    state.queue = sortRows([...loadedRows, ...draftRows]);
     state.pendingDeletes = (session.pendingDeleteRefs ?? []).map(normalizePendingDeleteRef).filter(Boolean);
     state.selectedRowIds.clear();
     state.expandedId = null;
@@ -3840,7 +4193,7 @@ async function updateExpectedLocation(item) {
 
   const id = clean(body?.id ?? item.expectedLocationId);
   if (id) item.expectedLocationId = id;
-  markItemSynced(item, id ? `Location ID: ${id}` : "Updated");
+  markItemSynced(item, id ? `Location ID: ${id}` : "Updated", false, "updated");
   autoSaveActiveSession();
   return result;
 }
@@ -4149,6 +4502,7 @@ async function importScheduleFile(file) {
 els.addRow.addEventListener("click", () => {
   const item = createItem();
   state.queue.push(item);
+  sortQueue();
   state.expandedId = item.id;
   autoSaveActiveSession("Created from manual row entry.");
   renderQueue();
@@ -4285,6 +4639,7 @@ els.newSession.addEventListener("click", () => {
   }
 
   autoSaveActiveSession("Created from local draft before schedule switch.");
+  state.queueSort = { ...DEFAULT_QUEUE_SORT };
   createSession();
   state.queue = [];
   state.pendingDeletes = [];
@@ -4327,6 +4682,9 @@ els.selectAllRows.addEventListener("change", () => {
   renderQueue();
 });
 
+els.sortContact.addEventListener("click", () => toggleQueueSort("contact"));
+els.sortTimeframe.addEventListener("click", () => toggleQueueSort("timeframe"));
+
 [els.sessionName, els.sessionDescription].forEach((input) => {
   input.addEventListener("input", () => {
     const session = currentSession();
@@ -4340,6 +4698,12 @@ els.selectAllRows.addEventListener("change", () => {
   input.addEventListener("change", () => {
     saveActiveSessionFromQueue();
   });
+});
+
+els.sessionDescriptionDisplay.addEventListener("click", startScheduleNoteEdit);
+
+els.sessionDescriptionConfirm.addEventListener("click", () => {
+  finishScheduleNoteEdit();
 });
 
 function setSessionTimeZoneValue(value, applyChange = false) {
@@ -4484,8 +4848,24 @@ els.queueBody.addEventListener("click", async (event) => {
     return;
   }
 
+  const noteSave = event.target.closest("[data-save-inline-note]");
+  if (noteSave) {
+    event.preventDefault();
+    finishInlineNoteEdit(true);
+    return;
+  }
+
+  const noteEdit = event.target.closest("[data-edit-note]");
+  if (noteEdit) {
+    event.preventDefault();
+    if (state.editingNoteId && state.editingNoteId !== noteEdit.dataset.editNote) finishInlineNoteEdit(true);
+    startInlineNoteEdit(noteEdit.dataset.editNote);
+    return;
+  }
+
   const toggle = event.target.closest("[data-toggle]");
   if (toggle) {
+    if (state.editingNoteId) finishInlineNoteEdit(true);
     state.expandedId = state.expandedId === toggle.dataset.toggle ? null : toggle.dataset.toggle;
     state.lockedContactNoticeId = null;
     renderQueue();
@@ -4514,6 +4894,21 @@ els.queueBody.addEventListener("click", async (event) => {
 });
 
 els.queueBody.addEventListener("keydown", (event) => {
+  const inlineNote = event.target.closest("[data-inline-note]");
+  if (inlineNote) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      finishInlineNoteEdit(false);
+      return;
+    }
+
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      finishInlineNoteEdit(true);
+    }
+    return;
+  }
+
   const input = event.target.closest(".field-combo [data-field]");
   if (!input) return;
 
@@ -4552,6 +4947,16 @@ els.queueBody.addEventListener("keydown", (event) => {
 });
 
 els.queueBody.addEventListener("input", (event) => {
+  const inlineNote = event.target.closest("[data-inline-note]");
+  if (inlineNote) {
+    const item = state.queue.find((row) => row.id === inlineNote.dataset.inlineNote);
+    if (item) {
+      item.note = inlineNote.value;
+      autoSaveActiveSession();
+    }
+    return;
+  }
+
   const input = event.target.closest("[data-field]");
   if (!input) return;
 
@@ -4574,6 +4979,18 @@ els.queueBody.addEventListener("input", (event) => {
   autoSaveActiveSession();
   refreshQueueActions();
   refreshEndpointPreview();
+});
+
+els.queueBody.addEventListener("focusout", (event) => {
+  const noteEditor = event.target.closest(".row-note-editor");
+  const inlineNote = noteEditor?.querySelector("[data-inline-note]");
+  if (!inlineNote) return;
+  if (noteEditor.contains(event.relatedTarget)) return;
+
+  const itemId = inlineNote.dataset.inlineNote;
+  window.setTimeout(() => {
+    if (state.editingNoteId === itemId) finishInlineNoteEdit(true);
+  }, 0);
 });
 
 els.queueBody.addEventListener("change", (event) => {

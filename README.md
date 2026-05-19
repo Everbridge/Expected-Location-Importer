@@ -16,8 +16,11 @@ Open `http://localhost:5173`.
 - Use `Load CSV` to add CSV rows to the selected schedule. If no schedule is selected, the app creates a new saved schedule.
 - Use `Add Row` for manual entry.
 - Expand any row in the table to edit it before sending.
+- Rows are ordered by Timeframe, then Contact ID, by default. Click the Contact ID or Timeframe header to change the table sort.
 - Use `Send to Everbridge` after the table is reviewed. After a schedule has returned Expected Location IDs, the button changes to `Apply Changes` for create/update/delete sync.
-- Draft rows, unapplied edits, and each row's last send status are stored in the active schedule. Manual drafts create a local schedule automatically, and schedule state is saved when rows are loaded, edited, removed, cleared, switched, sent, or restored after a page reload.
+- Draft rows, row notes, unapplied edits, and each row's last send or refresh status are stored in the active schedule. Manual drafts create a local schedule automatically, and schedule state is saved when rows are loaded, edited, removed, cleared, switched, sent, refreshed, or restored after a page reload.
+- Click the yellow Schedule note to edit it, then use the check button to confirm.
+- Click an existing yellow row note to edit it in place, then use the check button to confirm. Row notes are local schedule context and are not sent to Everbridge.
 - Use the Saved Schedules dropdown to switch schedules. Selecting a schedule saves the previous schedule locally, then loads the selected schedule. The app stores each Expected Location ID with its contact ID type and contact identifier because Everbridge lookup/update endpoints require both contact and location IDs.
 - Review the `Status` column after sending. It reflects the API response for each row when row-level details are returned.
 
