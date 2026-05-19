@@ -2337,6 +2337,7 @@ function renderSessionControls() {
   els.newSession.disabled = disabled;
   els.printSchedule.disabled = disabled || (!session && !state.queue.length);
   renderPrintReport();
+  resizeNoteTextareas(els.sessionDescriptionEditor);
 }
 
 function saveActiveSessionFromQueue() {
@@ -3438,6 +3439,12 @@ function refreshSelectionControls() {
   if (els.deleteSelected) {
     els.deleteSelected.hidden = selectedCount === 0;
     els.deleteSelected.disabled = selectedCount === 0 || disabled;
+    els.deleteSelected.closest(".action-row")?.classList.toggle("has-selection-action", selectedCount > 0);
+    const label = selectedCount > 1
+      ? `Delete ${selectedCount} Selected Expected Locations`
+      : "Delete Selected Expected Location";
+    els.deleteSelected.setAttribute("aria-label", label);
+    els.deleteSelected.title = label;
   }
 }
 
@@ -3493,8 +3500,31 @@ function toggleQueueSort(field) {
   renderQueue();
 }
 
+function isNoteTextarea(input) {
+  return input instanceof HTMLTextAreaElement
+    && (input.id === "sessionDescription" || input.dataset.inlineNote !== undefined || input.dataset.field === "note");
+}
+
+function resizeNoteTextarea(textarea) {
+  if (!isNoteTextarea(textarea) || textarea.offsetParent === null) return;
+
+  const minHeight = Number.parseFloat(window.getComputedStyle(textarea).minHeight) || 0;
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.max(textarea.scrollHeight + 2, minHeight)}px`;
+}
+
+function resizeNoteTextareas(scope = document) {
+  requestAnimationFrame(() => {
+    const root = scope instanceof Element || scope instanceof Document ? scope : document;
+    root
+      .querySelectorAll("#sessionDescription, textarea[data-inline-note], textarea[data-field='note']")
+      .forEach(resizeNoteTextarea);
+  });
+}
+
 function focusScheduleNoteEditor() {
   requestAnimationFrame(() => {
+    resizeNoteTextarea(els.sessionDescription);
     els.sessionDescription.focus();
     els.sessionDescription.setSelectionRange(els.sessionDescription.value.length, els.sessionDescription.value.length);
   });
@@ -3524,6 +3554,7 @@ function focusInlineNoteEditor(itemId) {
       .find((input) => input.dataset.inlineNote === itemId);
     if (!textarea) return;
 
+    resizeNoteTextarea(textarea);
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   });
@@ -3904,6 +3935,7 @@ function renderQueue() {
       els.queueBody.append(detail);
     }
   });
+  resizeNoteTextareas(els.queueBody);
 }
 
 function renderUploadStatus(item) {
@@ -5319,6 +5351,7 @@ els.sortTimeframe.addEventListener("click", () => toggleQueueSort("timeframe"));
 
 [els.sessionName, els.sessionDescription].forEach((input) => {
   input.addEventListener("input", () => {
+    resizeNoteTextarea(input);
     const session = currentSession();
     if (!session) return;
 
@@ -5601,6 +5634,7 @@ els.queueBody.addEventListener("keydown", (event) => {
 els.queueBody.addEventListener("input", (event) => {
   const inlineNote = event.target.closest("[data-inline-note]");
   if (inlineNote) {
+    resizeNoteTextarea(inlineNote);
     const item = state.queue.find((row) => row.id === inlineNote.dataset.inlineNote);
     if (item) {
       item.note = inlineNote.value;
@@ -5611,6 +5645,8 @@ els.queueBody.addEventListener("input", (event) => {
 
   const input = event.target.closest("[data-field]");
   if (!input) return;
+
+  resizeNoteTextarea(input);
 
   const item = state.queue.find((row) => row.id === input.dataset.id);
   if (!item) return;

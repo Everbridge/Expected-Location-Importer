@@ -442,6 +442,13 @@ textarea {
   resize: vertical;
 }
 
+#sessionDescription,
+textarea[data-inline-note],
+textarea[data-field="note"] {
+  overflow: hidden;
+  resize: none;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -1364,29 +1371,49 @@ tr:last-child td {
 
 @container (max-width: 900px) {
   .detail-row .editor-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .detail-row .editor-grid > * {
-    grid-column: span 1;
+    grid-column: span 2;
   }
 
   .detail-row .editor-grid .field-arriveDate,
   .detail-row .editor-grid .field-expireDate {
-    grid-column: auto;
+    grid-column: span 2;
   }
 
   .detail-row .editor-grid .field-streetAddress,
   .detail-row .editor-grid .field-timeZone,
   .detail-row .editor-grid .field-note,
   .detail-row .editor-grid .wide {
+    grid-column: span 4;
+  }
+
+  .detail-row .editor-grid .field-locationEntryMode,
+  .detail-row .editor-grid .field-locationName,
+  .detail-row .editor-grid .field-iata,
+  .detail-row .editor-grid .field-assetExternalId,
+  .detail-row .editor-grid .field-contactIdType,
+  .detail-row .editor-grid .field-contactIdentifier,
+  .detail-row .editor-grid .field-suite,
+  .detail-row .editor-grid .field-city,
+  .detail-row .editor-grid .field-region,
+  .detail-row .editor-grid .field-country,
+  .detail-row .editor-grid .field-arriveDate,
+  .detail-row .editor-grid .field-expireDate {
     grid-column: span 2;
+  }
+
+  .detail-row .editor-grid .field-lat,
+  .detail-row .editor-grid .field-lon {
+    grid-column: span 1;
   }
 }
 
 @container (max-width: 560px) {
   .detail-row .editor-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .detail-row .editor-grid > *,
@@ -1396,6 +1423,27 @@ tr:last-child td {
   .detail-row .editor-grid .field-timeZone,
   .detail-row .editor-grid .field-note,
   .detail-row .wide {
+    grid-column: span 4;
+  }
+
+  .detail-row .editor-grid .field-locationEntryMode,
+  .detail-row .editor-grid .field-locationName,
+  .detail-row .editor-grid .field-iata,
+  .detail-row .editor-grid .field-assetExternalId,
+  .detail-row .editor-grid .field-contactIdType,
+  .detail-row .editor-grid .field-contactIdentifier,
+  .detail-row .editor-grid .field-suite,
+  .detail-row .editor-grid .field-city,
+  .detail-row .editor-grid .field-region,
+  .detail-row .editor-grid .field-country,
+  .detail-row .editor-grid .field-arriveDate,
+  .detail-row .editor-grid .field-expireDate,
+  .detail-row .editor-grid .field-postalCode {
+    grid-column: span 2;
+  }
+
+  .detail-row .editor-grid .field-lat,
+  .detail-row .editor-grid .field-lon {
     grid-column: span 1;
   }
 }
@@ -1668,12 +1716,10 @@ tr:last-child td {
 
   .locations-panel .summary-row {
     display: grid;
-    grid-template-columns: 38px minmax(0, 1fr) auto;
+    grid-template-columns: 38px minmax(0, 1fr) minmax(0, 0.92fr) auto;
     grid-template-areas:
-      "select contact actions"
-      "expand timeframe actions"
-      "location location location"
-      "status status status";
+      "select contact timeframe actions"
+      "expand location status actions";
     margin-top: 10px;
     overflow: hidden;
     border: 1px solid var(--line);
@@ -1731,6 +1777,7 @@ tr:last-child td {
 
   .locations-panel .contact-cell {
     grid-area: contact;
+    padding-right: 6px;
   }
 
   .locations-panel .contact-cell .contact-name {
@@ -1745,7 +1792,7 @@ tr:last-child td {
 
   .locations-panel .timeframe-cell {
     grid-area: timeframe;
-    padding-top: 0;
+    padding-left: 6px;
   }
 
   .locations-panel .timeframe-cell .row-title {
@@ -1756,17 +1803,29 @@ tr:last-child td {
 
   .locations-panel .location-cell {
     grid-area: location;
-    padding-bottom: 4px;
+    padding-top: 0;
+    padding-right: 6px;
     border-top: 1px solid var(--line);
   }
 
   .locations-panel .status-cell {
     grid-area: status;
+    padding-top: 0;
+    padding-left: 6px;
     border-top: 1px solid var(--line);
   }
 
   .locations-panel .status-cell .status-detail {
     max-width: 100%;
+  }
+
+  .locations-panel .status-cell .status-badge {
+    max-width: 100%;
+  }
+
+  .locations-panel .status-cell .status-badge span {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .locations-panel .actions-cell {
@@ -1775,7 +1834,7 @@ tr:last-child td {
     grid-area: actions;
     align-items: center;
     justify-content: flex-end;
-    padding-left: 0;
+    padding-left: 4px;
     box-shadow: none;
   }
 
@@ -1795,7 +1854,7 @@ tr:last-child td {
 
   .locations-panel .summary-note-row td {
     display: block;
-    padding: 0 10px 10px;
+    padding: 8px 10px 10px;
     border: 1px solid var(--line);
     border-top: 0;
     border-radius: 0 0 6px 6px;
@@ -1839,16 +1898,68 @@ tr:last-child td {
   }
 }
 
-@media (max-width: 1140px) {
+@media (max-width: 760px) {
+  .panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .schedule-heading {
     align-items: stretch;
     grid-template-columns: 1fr;
   }
 
   .schedule-controls {
-    grid-template-columns: minmax(300px, 1fr) repeat(3, max-content);
+    grid-template-columns: minmax(0, 1fr) repeat(3, 36px);
     justify-self: stretch;
     width: 100%;
+  }
+
+  .schedule-select-control {
+    grid-column: 1;
+    grid-template-columns: 1fr;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .action-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(3, 36px);
+    justify-content: start;
+    width: 100%;
+  }
+
+  .action-row.has-selection-action {
+    grid-template-columns: minmax(0, 1fr) repeat(4, 36px);
+  }
+
+  .action-row button,
+  .schedule-controls > button,
+  .button-link {
+    gap: 4px;
+    min-width: 0;
+    width: 100%;
+    padding-right: 8px;
+    padding-left: 8px;
+    font-size: 0.94rem;
+  }
+
+  .action-row .compact-icon-control,
+  .action-row .compact-icon-link,
+  .schedule-controls .compact-icon-control {
+    justify-self: start;
+    width: 36px;
+    min-width: 36px;
+    padding: 0;
+  }
+
+  .schedule-controls .action-menu {
+    justify-self: start;
+    width: 36px;
+  }
+
+  #sendImport {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1863,30 +1974,6 @@ tr:last-child td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .panel-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .action-row {
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
-}
-
-@media (min-width: 641px) and (max-width: 760px) {
-  .schedule-controls {
-    grid-template-columns: repeat(3, 36px) minmax(0, 1fr);
-    justify-self: stretch;
-    width: 100%;
-  }
-
-  .schedule-select-control {
-    grid-column: 1 / -1;
-    justify-self: stretch;
-    width: 100%;
-  }
 }
 
 @media (max-width: 640px) {
@@ -1924,13 +2011,13 @@ tr:last-child td {
   }
 
   .schedule-controls {
-    grid-template-columns: repeat(3, 36px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) repeat(3, 36px);
     justify-self: stretch;
     width: 100%;
   }
 
   .schedule-select-control {
-    grid-column: 1 / -1;
+    grid-column: 1;
     grid-template-columns: 1fr;
     justify-self: stretch;
     width: 100%;
@@ -1945,6 +2032,10 @@ tr:last-child td {
     grid-column: span 1;
   }
 
+  .detail-row .editor-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .detail-row .editor-grid > *,
   .detail-row .editor-grid .field-arriveDate,
   .detail-row .editor-grid .field-expireDate,
@@ -1952,6 +2043,27 @@ tr:last-child td {
   .detail-row .editor-grid .field-timeZone,
   .detail-row .editor-grid .field-note,
   .detail-row .editor-grid .wide {
+    grid-column: span 4;
+  }
+
+  .detail-row .editor-grid .field-locationEntryMode,
+  .detail-row .editor-grid .field-locationName,
+  .detail-row .editor-grid .field-iata,
+  .detail-row .editor-grid .field-assetExternalId,
+  .detail-row .editor-grid .field-contactIdType,
+  .detail-row .editor-grid .field-contactIdentifier,
+  .detail-row .editor-grid .field-suite,
+  .detail-row .editor-grid .field-city,
+  .detail-row .editor-grid .field-region,
+  .detail-row .editor-grid .field-country,
+  .detail-row .editor-grid .field-arriveDate,
+  .detail-row .editor-grid .field-expireDate,
+  .detail-row .editor-grid .field-postalCode {
+    grid-column: span 2;
+  }
+
+  .detail-row .editor-grid .field-lat,
+  .detail-row .editor-grid .field-lon {
     grid-column: span 1;
   }
 
@@ -1962,13 +2074,17 @@ tr:last-child td {
 
   .action-row {
     display: grid;
-    grid-template-columns: repeat(3, 36px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) repeat(3, 36px);
     justify-content: start;
     width: 100%;
   }
 
+  .action-row.has-selection-action {
+    grid-template-columns: minmax(0, 1fr) repeat(4, 36px);
+  }
+
   .action-row button,
-  .schedule-controls button,
+  .schedule-controls > button,
   .button-link {
     gap: 4px;
     min-width: 0;
@@ -1990,14 +2106,6 @@ tr:last-child td {
   .schedule-controls .action-menu {
     justify-self: start;
     width: 36px;
-  }
-
-  #loadCsv {
-    grid-column: 1 / -1;
-  }
-
-  .action-row .selection-action {
-    grid-column: 1 / -1;
   }
 
   #sendImport {
