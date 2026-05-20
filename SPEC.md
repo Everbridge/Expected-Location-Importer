@@ -61,6 +61,7 @@ Core principles:
 - New manual rows expand immediately, default to a one-hour timeframe rounded forward to the next `:00` or `:30` boundary, default Contact ID Type to `External ID`, and default Location Type to `Address`.
 - Rows are not auto-expanded by CSV load, schedule refresh, or validation failure.
 - Required fields are Contact ID Type, Contact ID, Start Time, End Time, and one location method.
+- The row editor keeps the Everbridge Contact ID Type labels `Contact ID` and `External ID`.
 - Location methods are `Address`, `Asset External ID`, and `IATA`.
 - Address rows require Location Name, Street Address, City, State/Province, and Country; Suite, Postal Code, Latitude, and Longitude are optional.
 - Latitude and Longitude must be provided together.
@@ -121,6 +122,7 @@ Core principles:
 - Time Zone is not printed in the report header.
 - The location section is titled `Scheduled Locations` and shows the location count beside the title.
 - The print table uses content-responsive column sizing with a narrow No. column, narrower Contact column, and wider Location column.
+- Both Contact ID and External ID contacts print as `ID: <id>` in the Contact column.
 - Contact, Timeframe, and Location print as two-line values with clear vertical spacing.
 - The print Location column uses the same two-line location summary as the interactive table.
 - Per-location status is not printed.
@@ -178,7 +180,7 @@ Each summary row shows:
 
 - selection checkbox
 - compact expand/collapse icon
-- Contact column with resolved contact name when available, followed by `Contact ID: <id>` or `External ID: <id>`
+- Contact column with resolved contact name when available, followed by `ID: <id>` for both Contact ID and External ID rows
 - Timeframe column with Start Time and End Time in matching bold text
 - Location column with two lines: address rows show Location Name and Address; IATA rows show `IATA` and code; Asset rows show `Asset ID` and ID
 - optional row Note as a second full-width line with a `note-sticky` icon and inline editor

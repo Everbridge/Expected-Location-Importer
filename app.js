@@ -2234,7 +2234,7 @@ function uploadStatusLabel(statusState) {
 function printRecordHtml(item, index) {
   const contactTitle = clean(item.contactIdentifier) || "Add Contact ID";
   const contactName = clean(item.contactName);
-  const contactLabel = contactIdTypeLabel(item.contactIdType);
+  const contactLabel = contactSummaryIdTypeLabel(item.contactIdType);
   const contactDetail = isIncompleteSummaryText(contactTitle)
     ? contactTitle
     : `${contactLabel}: ${contactTitle}`;
@@ -2888,6 +2888,10 @@ function contactIdPayloadValue(value) {
 
 function contactIdTypeLabel(value) {
   return value === "externalId" ? "External ID" : "Contact ID";
+}
+
+function contactSummaryIdTypeLabel(value) {
+  return "ID";
 }
 
 function isFailedItem(item) {
@@ -3847,7 +3851,7 @@ function renderQueue() {
     const location = locationDisplaySummary(item);
     const contactTitle = clean(item.contactIdentifier) || "Add Contact ID";
     const contactName = clean(item.contactName);
-    const contactLabel = contactIdTypeLabel(item.contactIdType);
+    const contactLabel = contactSummaryIdTypeLabel(item.contactIdType);
     const contactDetail = isIncompleteSummaryText(contactTitle)
       ? contactTitle
       : `${contactLabel}: ${contactTitle}`;
